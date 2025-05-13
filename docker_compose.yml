@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Transcription Backend Service
+  transcription-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./outputs:/app/outputs
+      - ./transcription_config.json:/app/transcription_config.json
+    environment:
+      - BASE_URL=https://api.openai.com/v1
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Agent Backend Service
+  agent-api:
+    build:
+      context: ./backend-agent
+      dockerfile: Dockerfile.agent
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./agent_config.json:/app/agent_config.json
+    environment:
+      - TRANSCRIPTION_API_URL=http://transcription-api:8000
+      - LLM_API_URL=https://api.openai.com/v1
+    depends_on:
+      - transcription-api
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./agent-frontend
+      dockerfile: Dockerfile.agent.frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_TRANSCRIPTION_API_URL=http://localhost:8000
+      - REACT_APP_AGENT_API_URL=http://localhost:8001
+    depends_on:
+      - transcription-api
+      - agent-api
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  outputs:

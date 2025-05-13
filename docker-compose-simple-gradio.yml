@@ -1,0 +1,29 @@
+version: '3'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./outputs:/app/outputs
+    environment:
+      - BASE_URL=${BASE_URL:-https://api.openai.com/v1}
+      - DEBUG=true
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./gradio-frontend
+      dockerfile: Dockerfile.gradio
+    ports:
+      - "7860:7860"
+    environment:
+      - API_BASE_URL=http://backend:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./outputs:/app/outputs
+    restart: unless-stopped

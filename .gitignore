@@ -1,0 +1,9 @@
+agent-frontend/node_modules
+backend/.venv
+backend/__pycache__
+backend/outputs
+backend-agent/.venv
+backend-agent/__pycache__
+gradio-frontend/.venv
+gradio-frontend/__pycache__
+gradio-frontend/outputs

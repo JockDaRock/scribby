@@ -1,0 +1,5 @@
+{
+    "base_url": "https://api.openai.com/v1",
+    "models": ["gpt-4.1-nano", "gpt-4o-mini"],
+    "default_model": "gpt-4o-mini"
+  }
