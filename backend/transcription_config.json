@@ -1,0 +1,8 @@
+{
+  "base_url": "https://api.openai.com/v1",
+  "models": [
+    "whisper-1",
+    "distil-whisper-large-v3-en"
+  ],
+  "default_model": "whisper-1"
+}

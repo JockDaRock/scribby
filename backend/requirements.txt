@@ -1,0 +1,7 @@
+fastapi==0.95.2
+uvicorn==0.22.0
+requests==2.31.0
+python-multipart==0.0.6
+pydantic==1.10.8
+ffmpeg-python==0.2.0
+yt-dlp==2025.03.31
