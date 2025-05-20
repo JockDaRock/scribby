@@ -29,6 +29,9 @@ function AppContent() {
   // State to store results
   const [results, setResults] = useState(null);
   
+  // State to track the content type being processed
+  const [contentType, setContentType] = useState('social_media');
+  
   // API configuration from settings
   const apiConfig = {
     transcriptionApiUrl: settings.transcriptionApiUrl || process.env.REACT_APP_TRANSCRIPTION_API_URL || 'http://localhost:8000',
@@ -78,8 +81,9 @@ function AppContent() {
   }, [jobId, currentStep, checkJobStatus]);
   
   // Function to handle form submission
-  const handleSubmit = (jobId) => {
+  const handleSubmit = (jobId, type) => {
     setJobId(jobId);
+    setContentType(type);
     setCurrentStep('processing');
   };
   
@@ -114,7 +118,7 @@ function AppContent() {
                 {currentStep === 'input' && (
                   <InputForm 
                     apiConfig={apiConfig} 
-                    onSubmit={handleSubmit} 
+                    onSubmit={(jobId, contentType) => handleSubmit(jobId, contentType)} 
                   />
                 )}
                 

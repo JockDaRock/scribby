@@ -237,7 +237,7 @@ const ProcessingStatus = ({ jobId, status }) => {
               {progress >= 70 ? '✓' : '○'}
             </span>
             <span className={progress >= 70 ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}>
-              Generating social media content
+              {localStatus?.content_type === 'blog' ? 'Generating blog post' : 'Generating social media content'}
             </span>
           </li>
           <li className="flex items-start">

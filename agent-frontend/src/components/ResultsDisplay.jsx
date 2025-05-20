@@ -187,10 +187,106 @@ const ContentCard = ({ platform, content }) => {
   );
 };
 
-const ResultsDisplay = ({ results, onReset }) => {
-  const [activeTab, setActiveTab] = useState('posts');
+// Blog Display Component
+const BlogCard = ({ blogContent }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedText, setEditedText] = useState(blogContent.text);
+  const [isCopied, setIsCopied] = useState(false);
   
-  if (!results || !results.content) {
+  const handleCopy = () => {
+    setIsCopied(true);
+    toast.success(`Copied blog content to clipboard!`);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+  
+  const handleEdit = () => {
+    setIsEditing(true);
+  };
+  
+  const handleSave = () => {
+    setIsEditing(false);
+    blogContent.text = editedText;
+  };
+  
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditedText(blogContent.text);
+  };
+  
+  const handleChange = (e) => {
+    setEditedText(e.target.value);
+  };
+  
+  return (
+    <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 p-4 mb-6 bg-indigo-50 dark:bg-indigo-900/20 transition-colors duration-300 dark:text-gray-200">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-lg text-indigo-800 dark:text-indigo-300">Blog Post</h3>
+        
+        <div className="flex space-x-2">
+          {isEditing ? (
+            <>
+              <button
+                onClick={handleSave}
+                className="px-3 py-1 bg-green-600 dark:bg-green-700 text-white rounded hover:bg-green-700 dark:hover:bg-green-800 text-sm font-medium transition-colors duration-300"
+              >
+                Save
+              </button>
+              <button
+                onClick={handleCancel}
+                className="px-3 py-1 bg-gray-600 dark:bg-gray-700 text-white rounded hover:bg-gray-700 dark:hover:bg-gray-800 text-sm font-medium transition-colors duration-300"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleEdit}
+                className="px-3 py-1 bg-gray-600 dark:bg-gray-700 text-white rounded hover:bg-gray-700 dark:hover:bg-gray-800 text-sm font-medium transition-colors duration-300"
+              >
+                Edit
+              </button>
+              <CopyToClipboard text={blogContent.text} onCopy={handleCopy}>
+                <button
+                  className={`px-3 py-1 ${
+                    isCopied 
+                      ? 'bg-green-600 dark:bg-green-700' 
+                      : 'bg-indigo-600 dark:bg-purple-700 hover:bg-indigo-700 dark:hover:bg-purple-800'
+                  } text-white rounded text-sm font-medium transition-colors duration-300`}
+                >
+                  {isCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </CopyToClipboard>
+            </>
+          )}
+        </div>
+      </div>
+      
+      <div className="mb-3">
+        {isEditing ? (
+          <textarea
+            value={editedText}
+            onChange={handleChange}
+            className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white transition-colors duration-300 border-gray-300 dark:border-gray-600"
+            rows="15"
+          />
+        ) : (
+          <div className="prose prose-indigo dark:prose-invert dark:text-gray-200 max-w-none whitespace-pre-wrap">
+            {blogContent.text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ResultsDisplay = ({ results, onReset }) => {
+  const [activeTab, setActiveTab] = useState('content');  // Changed default tab name from 'posts' to 'content'
+  
+  // Add console log to inspect the results structure
+  console.log('Results data:', results);
+  
+  if (!results || (results.content_type === 'social_media' && !results.content) || (results.content_type === 'blog' && !results.blog_content)) {
     return (
       <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md dark:shadow-lg transition-colors duration-300">
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 dark:text-white">Results</h2>
@@ -215,13 +311,13 @@ const ResultsDisplay = ({ results, onReset }) => {
       <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6 transition-colors duration-300">
         <button
           className={`py-2 px-4 font-medium transition-colors duration-300 ${
-            activeTab === 'posts'
+            activeTab === 'content'
               ? 'text-indigo-600 dark:text-purple-400 border-b-2 border-indigo-600 dark:border-purple-400'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
           }`}
-          onClick={() => setActiveTab('posts')}
+          onClick={() => setActiveTab('content')}
         >
-          Social Media Posts
+          {results.content_type === 'blog' ? 'Blog Post' : 'Social Media Posts'}
         </button>
         <button
           className={`py-2 px-4 font-medium transition-colors duration-300 ${
@@ -236,15 +332,26 @@ const ResultsDisplay = ({ results, onReset }) => {
       </div>
       
       {/* Content */}
-      {activeTab === 'posts' ? (
+      {activeTab === 'content' ? (
         <div>
-          <p className="text-gray-600 dark:text-gray-300 mb-6 text-center transition-colors duration-300">
-            Here are your generated social media posts. You can edit them as needed before copying.
-          </p>
-          
-          {Object.entries(results.content).map(([platform, content]) => (
-            <ContentCard key={platform} platform={platform} content={content} />
-          ))}
+          {results.content_type === 'blog' ? (
+            <>
+              <p className="text-gray-600 dark:text-gray-300 mb-6 text-center transition-colors duration-300">
+                Here is your generated blog post. You can edit it as needed before copying.
+              </p>
+              <BlogCard blogContent={results.blog_content} />
+            </>
+          ) : (
+            <>
+              <p className="text-gray-600 dark:text-gray-300 mb-6 text-center transition-colors duration-300">
+                Here are your generated social media posts. You can edit them as needed before copying.
+              </p>
+              
+              {Object.entries(results.content).map(([platform, content]) => (
+                <ContentCard key={platform} platform={platform} content={content} />
+              ))}
+            </>
+          )}
         </div>
       ) : (
         <div>
