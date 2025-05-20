@@ -82,6 +82,7 @@ class SocialMediaRequest(BaseModel):
     llm_model: Optional[str] = None  # Use default from config if not specified
     llm_base_url: Optional[str] = None  # Optional base URL override
     transcription_base_url: Optional[str] = None  # Optional transcription base URL override 
+    content_type: Optional[str] = "social_media"  # 'social_media' or 'blog'
     platforms: List[str]
     context: Optional[str] = ""
     audience: Optional[str] = ""
@@ -137,6 +138,7 @@ async def process_content_generation(
     llm_model: str,
     llm_base_url: Optional[str],
     transcription_base_url: Optional[str],
+    content_type: str,
     platforms: List[str],
     context: str,
     audience: str,
@@ -315,7 +317,8 @@ async def process_content_generation(
             platforms, 
             context, 
             audience, 
-            tags
+            tags,
+            content_type
         )
         
         # Call LLM API
@@ -326,15 +329,38 @@ async def process_content_generation(
             return
             
         # Process LLM response
-        content_by_platform = parse_llm_response(llm_response, platforms)
+        parsed_content = parse_llm_response(llm_response, platforms, content_type)
+        
+        if "error" in parsed_content:
+            log(f"Error in parsed content: {parsed_content['error']}")
+            update_job_status(job_id, "error", f"Error parsing LLM response: {parsed_content['error']}")
+            return
+            
+        # Debug logging to see the parsed content
+        log(f"Content type: {content_type}")
+        log(f"Parsed content structure: {json.dumps(parsed_content, indent=2)}")
         
         # Final result
         result = {
+            "content_type": content_type,
             "platforms": platforms,
-            "content": content_by_platform,
             "transcript": transcript_text,
             "prompt": prompt
         }
+        
+        # Add content based on content_type
+        if content_type == "blog":
+            if "blog_content" in parsed_content:
+                result["blog_content"] = parsed_content["blog_content"]
+            else:
+                # Fallback in case the LLM didn't use the expected structure
+                result["blog_content"] = {
+                    "text": "[No blog content generated]",
+                    "character_count": 0
+                }
+                log("Warning: Blog content not found in parsed response, using fallback")
+        else:  # social_media
+            result["content"] = parsed_content
         
         update_job_status(job_id, "completed", "Content generation completed successfully", result)
         
@@ -344,7 +370,7 @@ async def process_content_generation(
         log(traceback.format_exc())
         update_job_status(job_id, "error", f"Error: {str(e)}")
 
-def generate_social_media_prompt(transcript_text, platforms, context, audience, tags):
+def generate_social_media_prompt(transcript_text, platforms, context, audience, tags, content_type="social_media"):
     """Generate a prompt for the LLM"""
     
     # Create a comma-separated list of platforms
@@ -361,7 +387,52 @@ def generate_social_media_prompt(transcript_text, platforms, context, audience, 
             else:
                 formatted_tags.append(tag)
         tags_str = ", ".join(formatted_tags)
-        
+    
+    # For blog post generation
+    if content_type == "blog":
+        prompt = f"""You are an expert content creator with deep experience creating engaging blog posts.
+
+TASK: Create a comprehensive blog post based on the transcribed content provided below.
+
+TRANSCRIPTION:
+```
+{transcript_text}
+```
+
+ADDITIONAL CONTEXT:
+{context}
+
+TARGET AUDIENCE:
+{audience}
+
+PEOPLE/ACCOUNTS TO REFERENCE:
+{tags_str}
+
+INSTRUCTIONS:
+1. Create a well-structured, engaging blog post that expands on the key ideas from the transcription.
+2. The blog post should include:
+   - An attention-grabbing headline
+   - An introduction that hooks the reader
+   - Well-organized body paragraphs with subheadings where appropriate
+   - A conclusion that summarizes the main points
+3. Use a professional tone that resonates with the target audience.
+4. Incorporate the people/accounts to reference when relevant.
+5. Format your response as JSON with the following structure:
+
+```json
+{{
+  "blog_content": {{
+    "text": "Your complete blog post content here, including headline",
+    "character_count": 123
+  }}
+}}
+```
+
+Create a comprehensive, well-written blog post that truly captures the essence of the transcribed content while being engaging and valuable to readers.
+"""
+        return prompt
+    
+    # Default to social media prompt
     prompt = f"""You are an expert social media manager with deep experience creating engaging content for various platforms.
 
 TASK: Create optimized social media posts based on the transcribed content provided below.
@@ -476,7 +547,7 @@ def call_llm_api(prompt, api_key, model, base_url=None):
         log(traceback.format_exc())
         return {"error": f"Error: {str(e)}"}
 
-def parse_llm_response(llm_response, platforms):
+def parse_llm_response(llm_response, platforms, content_type="social_media"):
     """Parse the LLM response to extract content for each platform"""
     try:
         if "content" not in llm_response:
@@ -504,14 +575,33 @@ def parse_llm_response(llm_response, platforms):
         # Parse the JSON
         try:
             result = json.loads(json_str)
-        except json.JSONDecodeError:
+            log(f"Parsed JSON structure: {json.dumps(result, indent=2)}")
+        except json.JSONDecodeError as e:
+            log(f"JSON decode error: {str(e)}")
             # Try some basic cleanup before failing
             json_str = json_str.replace('\n', '').replace('\r', '')
             try:
                 result = json.loads(json_str)
-            except:
+                log(f"Parsed JSON after cleanup: {json.dumps(result, indent=2)}")
+            except Exception as e:
+                log(f"Failed to parse JSON even after cleanup: {str(e)}")
                 return {"error": "Invalid JSON in LLM response"}
         
+        # For blog content
+        if content_type == "blog":
+            # Check if blog_content is present
+            if "blog_content" not in result:
+                # Create a default blog content response
+                result["blog_content"] = {
+                    "text": "[No blog content generated]",
+                    "character_count": 0
+                }
+            # Ensure character_count is present and accurate for blog content
+            if "text" in result["blog_content"]:
+                result["blog_content"]["character_count"] = len(result["blog_content"]["text"])
+            return result
+        
+        # For social media content (default)
         # Verify all requested platforms are included
         for platform in platforms:
             if platform not in result:
@@ -530,7 +620,7 @@ def parse_llm_response(llm_response, platforms):
         import traceback
         log(f"Error parsing LLM response: {str(e)}")
         log(traceback.format_exc())
-        return {"error": f"Error parsing response: {str(e)}"}
+        return {"error": f"Error parsing response: {str(e)}"}        
 
 # API endpoints
 @app.get("/")
@@ -582,6 +672,7 @@ async def generate_content(background_tasks: BackgroundTasks, request: SocialMed
             llm_model=model,
             llm_base_url=request.llm_base_url,
             transcription_base_url=request.transcription_base_url,
+            content_type=request.content_type,
             platforms=request.platforms,
             context=request.context,
             audience=request.audience,

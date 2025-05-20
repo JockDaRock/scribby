@@ -11,6 +11,7 @@ const InputForm = ({ apiConfig, onSubmit }) => {
   const [sourceType, setSourceType] = useState('youtube');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [audioFile, setAudioFile] = useState(null);
+  const [contentType, setContentType] = useState('social_media');
   const [selectedPlatforms, setSelectedPlatforms] = useState([]);
   const [context, setContext] = useState('');
   const [audience, setAudience] = useState('');
@@ -84,6 +85,18 @@ const InputForm = ({ apiConfig, onSubmit }) => {
       setSelectedPlatforms(availablePlatforms.map(platform => platform.id));
     }
   };
+
+  // Handle content type change
+  const handleContentTypeChange = (type) => {
+    setContentType(type);
+    
+    // If switching to blog type, ensure at least one platform is selected
+    // This is needed because the backend still requires platforms even for blog content
+    if (type === 'blog' && selectedPlatforms.length === 0 && availablePlatforms.length > 0) {
+      // Select all platforms by default for blog posts
+      setSelectedPlatforms(availablePlatforms.map(platform => platform.id));
+    }
+  };
   
   // Handle file upload
   const handleFileChange = (e) => {
@@ -117,7 +130,7 @@ const InputForm = ({ apiConfig, onSubmit }) => {
       return;
     }
     
-    if (selectedPlatforms.length === 0) {
+    if (contentType === 'social_media' && selectedPlatforms.length === 0) {
       toast.error("Please select at least one social media platform");
       return;
     }
@@ -174,6 +187,7 @@ const InputForm = ({ apiConfig, onSubmit }) => {
         // Pass base URLs from settings
         llm_base_url: settings.llmBaseUrl,
         transcription_base_url: settings.transcriptionBaseUrl,
+        content_type: contentType,
         platforms: selectedPlatforms,
         context: context,
         audience: audience,
@@ -201,8 +215,8 @@ const InputForm = ({ apiConfig, onSubmit }) => {
       
       const generateData = await generateResponse.json();
       
-      // Call onSubmit with the job ID
-      onSubmit(generateData.job_id);
+      // Call onSubmit with the job ID and content type
+      onSubmit(generateData.job_id, contentType);
       
     } catch (error) {
       console.error("Submission error:", error);
@@ -213,7 +227,9 @@ const InputForm = ({ apiConfig, onSubmit }) => {
   
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 max-w-4xl mx-auto transition-colors duration-300">
-      <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 dark:text-white">Create Social Media Content</h2>
+      <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 dark:text-white">
+        {contentType === 'social_media' ? 'Create Social Media Content' : 'Create Blog Post'}
+      </h2>
       
       {/* Settings notification banner */}
       {!hasConfiguredSettings && (
@@ -382,6 +398,37 @@ const InputForm = ({ apiConfig, onSubmit }) => {
         
         {/* Platform Selection */}
         <div className="mb-6">
+          <label className="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2">
+            Content Type
+          </label>
+          <div className="flex space-x-4">
+            <button
+              type="button"
+              className={`px-4 py-2 rounded-md ${
+                contentType === 'social_media' 
+                  ? 'bg-indigo-600 dark:bg-purple-700 text-white' 
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+              } transition-colors duration-300`}
+              onClick={() => handleContentTypeChange('social_media')}
+            >
+              Social Media Posts
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 rounded-md ${
+                contentType === 'blog' 
+                  ? 'bg-indigo-600 dark:bg-purple-700 text-white' 
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+              } transition-colors duration-300`}
+              onClick={() => handleContentTypeChange('blog')}
+            >
+              Blog Post
+            </button>
+          </div>
+        </div>
+        
+        {/* Platform Selection - Only show for social media content type */}
+        <div className={`mb-6 ${contentType === 'social_media' ? 'block' : 'hidden'}`}>
           <div className="flex justify-between items-center mb-2">
             <label className="block text-gray-700 dark:text-gray-200 text-sm font-bold">
               Social Media Platforms
