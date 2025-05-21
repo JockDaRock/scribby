@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import toast from 'react-hot-toast';
+import { SettingsContext } from './SettingsContext';
 
 // Social media platform icons
 const PlatformIcon = ({ platform }) => {
@@ -54,9 +55,13 @@ const PlatformIcon = ({ platform }) => {
 
 // Content Card component
 const ContentCard = ({ platform, content }) => {
+  const { settings } = useContext(SettingsContext);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(content.text);
   const [isCopied, setIsCopied] = useState(false);
+  const [isRevisioning, setIsRevisioning] = useState(false);
+  const [revisionInstructions, setRevisionInstructions] = useState('');
+  const [isRevisionLoading, setIsRevisionLoading] = useState(false);
   
   const handleCopy = () => {
     setIsCopied(true);
@@ -83,6 +88,68 @@ const ContentCard = ({ platform, content }) => {
   
   const handleChange = (e) => {
     setEditedText(e.target.value);
+  };
+  
+  const handleRevisionRequest = () => {
+    setIsRevisioning(true);
+  };
+  
+  const handleRevisionCancel = () => {
+    setIsRevisioning(false);
+    setRevisionInstructions('');
+  };
+  
+  const handleRevisionSubmit = async () => {
+    if (!revisionInstructions.trim()) {
+      toast.error('Please provide revision instructions');
+      return;
+    }
+    
+    if (!settings.llmApiKey) {
+      toast.error('LLM API key is required for revision. Please check your settings.');
+      return;
+    }
+    
+    setIsRevisionLoading(true);
+    
+    try {
+      const agentApiUrl = settings.llmApiUrl || process.env.REACT_APP_AGENT_API_URL || 'http://localhost:8001';
+      const response = await fetch(`${agentApiUrl}/revise`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: editedText,
+          platform: platform,
+          content_type: 'social_media',
+          instructions: revisionInstructions,
+          llm_api_key: settings.llmApiKey,
+          llm_model: settings.defaultLlmModel,
+          llm_base_url: settings.llmBaseUrl
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Revision request failed: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      setEditedText(data.revised_content);
+      content.text = data.revised_content;
+      content.character_count = data.revised_content.length;
+      
+      setIsRevisioning(false);
+      setRevisionInstructions('');
+      toast.success('Content revised successfully!');
+      
+    } catch (error) {
+      console.error('Revision error:', error);
+      toast.error('Failed to revise content. Please try again.');
+    } finally {
+      setIsRevisionLoading(false);
+    }
   };
   
   // Platform-specific styles (with dark mode variants)
@@ -134,6 +201,13 @@ const ContentCard = ({ platform, content }) => {
                 Save
               </button>
               <button
+                onClick={handleRevisionRequest}
+                className="px-3 py-1 bg-purple-600 dark:bg-purple-700 text-white rounded hover:bg-purple-700 dark:hover:bg-purple-800 text-sm font-medium transition-colors duration-300"
+                disabled={isRevisionLoading}
+              >
+                🤖 AI Revise
+              </button>
+              <button
                 onClick={handleCancel}
                 className="px-3 py-1 bg-gray-600 dark:bg-gray-700 text-white rounded hover:bg-gray-700 dark:hover:bg-gray-800 text-sm font-medium transition-colors duration-300"
               >
@@ -179,6 +253,47 @@ const ContentCard = ({ platform, content }) => {
         )}
       </div>
       
+      {/* Revision UI */}
+      {isRevisioning && (
+        <div className="mb-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
+          <label className="block text-sm font-medium text-purple-800 dark:text-purple-300 mb-2">
+            How would you like this revised?
+          </label>
+          <textarea
+            value={revisionInstructions}
+            onChange={(e) => setRevisionInstructions(e.target.value)}
+            className="w-full p-2 border border-purple-300 dark:border-purple-600 rounded dark:bg-gray-700 dark:text-white transition-colors duration-300"
+            rows="2"
+            placeholder="e.g., Make it more casual, Add emojis, Make it shorter, Focus on benefits..."
+          />
+          <div className="flex space-x-2 mt-2">
+            <button
+              onClick={handleRevisionSubmit}
+              disabled={isRevisionLoading}
+              className="px-3 py-1 bg-purple-600 dark:bg-purple-700 text-white rounded hover:bg-purple-700 dark:hover:bg-purple-800 text-sm font-medium transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRevisionLoading ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Revising...
+                </span>
+              ) : (
+                'Revise'
+              )}
+            </button>
+            <button
+              onClick={handleRevisionCancel}
+              className="px-3 py-1 bg-gray-500 dark:bg-gray-600 text-white rounded hover:bg-gray-600 dark:hover:bg-gray-700 text-sm font-medium transition-colors duration-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className={`text-xs flex justify-between transition-colors duration-300 ${isOverLimit ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-500 dark:text-gray-400'}`}>
         <span>Character count: {charCount}</span>
         <span>Limit: {charLimit}</span>
@@ -189,9 +304,13 @@ const ContentCard = ({ platform, content }) => {
 
 // Blog Display Component
 const BlogCard = ({ blogContent }) => {
+  const { settings } = useContext(SettingsContext);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(blogContent.text);
   const [isCopied, setIsCopied] = useState(false);
+  const [isRevisioning, setIsRevisioning] = useState(false);
+  const [revisionInstructions, setRevisionInstructions] = useState('');
+  const [isRevisionLoading, setIsRevisionLoading] = useState(false);
   
   const handleCopy = () => {
     setIsCopied(true);
@@ -217,6 +336,67 @@ const BlogCard = ({ blogContent }) => {
     setEditedText(e.target.value);
   };
   
+  const handleRevisionRequest = () => {
+    setIsRevisioning(true);
+  };
+  
+  const handleRevisionCancel = () => {
+    setIsRevisioning(false);
+    setRevisionInstructions('');
+  };
+  
+  const handleRevisionSubmit = async () => {
+    if (!revisionInstructions.trim()) {
+      toast.error('Please provide revision instructions');
+      return;
+    }
+    
+    if (!settings.llmApiKey) {
+      toast.error('LLM API key is required for revision. Please check your settings.');
+      return;
+    }
+    
+    setIsRevisionLoading(true);
+    
+    try {
+      const agentApiUrl = settings.llmApiUrl || process.env.REACT_APP_AGENT_API_URL || 'http://localhost:8001';
+      const response = await fetch(`${agentApiUrl}/revise`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: editedText,
+          platform: 'blog',
+          content_type: 'blog',
+          instructions: revisionInstructions,
+          llm_api_key: settings.llmApiKey,
+          llm_model: settings.defaultLlmModel,
+          llm_base_url: settings.llmBaseUrl
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Revision request failed: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      setEditedText(data.revised_content);
+      blogContent.text = data.revised_content;
+      
+      setIsRevisioning(false);
+      setRevisionInstructions('');
+      toast.success('Blog content revised successfully!');
+      
+    } catch (error) {
+      console.error('Revision error:', error);
+      toast.error('Failed to revise content. Please try again.');
+    } finally {
+      setIsRevisionLoading(false);
+    }
+  };
+  
   return (
     <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 p-4 mb-6 bg-indigo-50 dark:bg-indigo-900/20 transition-colors duration-300 dark:text-gray-200">
       <div className="flex items-center justify-between mb-3">
@@ -230,6 +410,13 @@ const BlogCard = ({ blogContent }) => {
                 className="px-3 py-1 bg-green-600 dark:bg-green-700 text-white rounded hover:bg-green-700 dark:hover:bg-green-800 text-sm font-medium transition-colors duration-300"
               >
                 Save
+              </button>
+              <button
+                onClick={handleRevisionRequest}
+                className="px-3 py-1 bg-purple-600 dark:bg-purple-700 text-white rounded hover:bg-purple-700 dark:hover:bg-purple-800 text-sm font-medium transition-colors duration-300"
+                disabled={isRevisionLoading}
+              >
+                🤖 AI Revise
               </button>
               <button
                 onClick={handleCancel}
@@ -276,15 +463,53 @@ const BlogCard = ({ blogContent }) => {
           </div>
         )}
       </div>
+      
+      {/* Revision UI */}
+      {isRevisioning && (
+        <div className="mb-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
+          <label className="block text-sm font-medium text-purple-800 dark:text-purple-300 mb-2">
+            How would you like this revised?
+          </label>
+          <textarea
+            value={revisionInstructions}
+            onChange={(e) => setRevisionInstructions(e.target.value)}
+            className="w-full p-2 border border-purple-300 dark:border-purple-600 rounded dark:bg-gray-700 dark:text-white transition-colors duration-300"
+            rows="2"
+            placeholder="e.g., Make it longer, Add more examples, Change the tone, Focus on specific aspects..."
+          />
+          <div className="flex space-x-2 mt-2">
+            <button
+              onClick={handleRevisionSubmit}
+              disabled={isRevisionLoading}
+              className="px-3 py-1 bg-purple-600 dark:bg-purple-700 text-white rounded hover:bg-purple-700 dark:hover:bg-purple-800 text-sm font-medium transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRevisionLoading ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Revising...
+                </span>
+              ) : (
+                'Revise'
+              )}
+            </button>
+            <button
+              onClick={handleRevisionCancel}
+              className="px-3 py-1 bg-gray-500 dark:bg-gray-600 text-white rounded hover:bg-gray-600 dark:hover:bg-gray-700 text-sm font-medium transition-colors duration-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 const ResultsDisplay = ({ results, onReset }) => {
-  const [activeTab, setActiveTab] = useState('content');  // Changed default tab name from 'posts' to 'content'
-  
-  // Add console log to inspect the results structure
-  console.log('Results data:', results);
+  const [activeTab, setActiveTab] = useState('content');
   
   if (!results || (results.content_type === 'social_media' && !results.content) || (results.content_type === 'blog' && !results.blog_content)) {
     return (

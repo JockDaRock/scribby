@@ -101,6 +101,24 @@ class GenerationStatusResponse(BaseModel):
 class PromptTemplate(BaseModel):
     template: str
 
+class RevisionRequest(BaseModel):
+    content: str
+    platform: str
+    content_type: str  # 'social_media' or 'blog'
+    instructions: str
+    llm_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_base_url: Optional[str] = None
+
+class RevisionRequest(BaseModel):
+    content: str
+    platform: str
+    content_type: str  # 'social_media' or 'blog'
+    instructions: str
+    llm_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_base_url: Optional[str] = None
+
 class ConfigModel(BaseModel):
     base_url: Optional[str] = None
     models: Optional[List[str]] = None
@@ -435,6 +453,9 @@ Create a comprehensive, well-written blog post that truly captures the essence o
     # Default to social media prompt
     prompt = f"""You are an expert social media manager with deep experience creating engaging content for various platforms.
 
+CRITICAL INSTRUCTION: You must ONLY create content for these specific platforms: {platforms_str}
+Do NOT create content for any other platforms. Only include the requested platforms in your JSON response.
+
 TASK: Create optimized social media posts based on the transcribed content provided below.
 
 TRANSCRIPTION:
@@ -442,7 +463,7 @@ TRANSCRIPTION:
 {transcript_text}
 ```
 
-TARGET PLATFORMS: {platforms_str}
+REQUESTED PLATFORMS (ONLY THESE): {platforms_str}
 
 ADDITIONAL CONTEXT:
 {context}
@@ -454,24 +475,25 @@ PEOPLE/ACCOUNTS TO TAG:
 {tags_str}
 
 INSTRUCTIONS:
-1. For each platform, create a post that is optimized for that platform's specific style, length limits, and audience expectations.
-2. Use appropriate emojis, formatting, and hashtags for each platform.
-3. Incorporate the tags provided when relevant.
-4. Ensure the posts capture the key messages from the transcription.
-5. Format your response as JSON with the following structure:
+1. Create content ONLY for these platforms: {platforms_str}
+2. For each requested platform, create a post optimized for that platform's specific style, length limits, and audience expectations.
+3. Use appropriate emojis, formatting, and hashtags for each platform.
+4. Incorporate the tags provided when relevant.
+5. Ensure the posts capture the key messages from the transcription.
+6. Format your response as JSON with ONLY the requested platforms:
 
+Example format (adjust based on actual requested platforms):
 ```json
-{{
-  "LinkedIn": {{
-    "text": "Your LinkedIn post content here",
-    "character_count": 123
-  }},
-  "Twitter": {{
-    "text": "Your Twitter post content here",
-    "character_count": 123
-  }},
-  ... (and so on for each requested platform)
-}}
+{{"""
+
+    # Add platform-specific examples based on what was actually requested
+    example_platforms = []
+    for platform in platforms:
+        example_platforms.append(f'  "{platform}": {{\n    "text": "Your {platform} post content here",\n    "character_count": 123\n  }}')
+    
+    prompt += "\n" + ",\n".join(example_platforms) + "\n}"
+
+    prompt += f"""
 ```
 
 LENGTH CONSTRAINTS:
@@ -482,7 +504,8 @@ LENGTH CONSTRAINTS:
 - Facebook: 63,206 characters
 - TikTok: 2,200 characters
 
-Only generate content for the platforms specified in the TARGET PLATFORMS section.
+CRITICAL: Your JSON response must contain ONLY these platforms: {platforms_str}
+Do NOT include any other platforms in your response.
 """
     
     return prompt
@@ -602,25 +625,108 @@ def parse_llm_response(llm_response, platforms, content_type="social_media"):
             return result
         
         # For social media content (default)
-        # Verify all requested platforms are included
+        # First, filter out any platforms that weren't requested
+        # This handles cases where the LLM ignores instructions and generates extra platforms
+        filtered_result = {}
         for platform in platforms:
-            if platform not in result:
-                result[platform] = {
+            if platform in result:
+                filtered_result[platform] = result[platform]
+            else:
+                # Add placeholder for missing requested platforms
+                filtered_result[platform] = {
                     "text": f"[No content generated for {platform}]",
                     "character_count": 0
                 }
             
             # Ensure character_count is present and accurate
-            if "text" in result[platform]:
-                result[platform]["character_count"] = len(result[platform]["text"])
+            if "text" in filtered_result[platform]:
+                filtered_result[platform]["character_count"] = len(filtered_result[platform]["text"])
                 
-        return result
+        return filtered_result
         
     except Exception as e:
         import traceback
         log(f"Error parsing LLM response: {str(e)}")
         log(traceback.format_exc())
-        return {"error": f"Error parsing response: {str(e)}"}        
+        return {"error": f"Error parsing response: {str(e)}"}
+
+def generate_revision_prompt(content, platform, content_type, instructions):
+    """Generate a prompt for revising content"""
+    
+    if content_type == "blog":
+        prompt = f"""You are an expert content editor specializing in blog posts.
+
+TASK: Revise the following blog post based on the specific instructions provided.
+
+ORIGINAL BLOG POST:
+```
+{content}
+```
+
+REVISION INSTRUCTIONS:
+{instructions}
+
+INSTRUCTIONS:
+1. Carefully read the original blog post and the revision instructions.
+2. Revise the content according to the instructions while maintaining the overall quality and coherence.
+3. Keep the same general structure and topic unless specifically instructed otherwise.
+4. Ensure the revised content is well-written, engaging, and appropriate for a blog format.
+5. Format your response as JSON with the following structure:
+
+```json
+{{
+  "revised_content": "Your revised blog post content here"
+}}
+```
+
+Provide only the JSON response with the revised content.
+"""
+    else:  # social_media
+        # Get platform character limit
+        char_limits = {
+            'LinkedIn': 3000,
+            'Twitter': 280,
+            'BlueSky': 300,
+            'Instagram': 2200,
+            'Facebook': 63206,
+            'TikTok': 2200,
+        }
+        char_limit = char_limits.get(platform, 1000)
+        
+        prompt = f"""You are an expert social media content editor specializing in {platform} posts.
+
+TASK: Revise the following {platform} post based on the specific instructions provided.
+
+ORIGINAL {platform.upper()} POST:
+```
+{content}
+```
+
+REVISION INSTRUCTIONS:
+{instructions}
+
+PLATFORM REQUIREMENTS:
+- Platform: {platform}
+- Character limit: {char_limit} characters
+- Follow {platform}-specific best practices for formatting, hashtags, and tone
+
+INSTRUCTIONS:
+1. Carefully read the original post and the revision instructions.
+2. Revise the content according to the instructions while maintaining appropriateness for {platform}.
+3. Ensure the revised post stays within the {char_limit} character limit.
+4. Maintain or improve engagement potential with appropriate emojis, hashtags, and formatting for {platform}.
+5. Format your response as JSON with the following structure:
+
+```json
+{{
+  "revised_content": "Your revised {platform} post content here"
+}}
+```
+
+Provide only the JSON response with the revised content.
+"""
+    
+    return prompt
 
 # API endpoints
 @app.get("/")
@@ -685,6 +791,8 @@ async def generate_content(background_tasks: BackgroundTasks, request: SocialMed
         log(f"Error in generate_content endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Configuration Endpoints
+
 @app.get("/status/{job_id}", response_model=GenerationStatusResponse)
 async def get_job_status(job_id: str):
     """Get the status of a content generation job"""
@@ -719,7 +827,126 @@ async def get_models():
     ]
     return {"models": models}
 
-# Configuration Endpoints
+@app.post("/revise")
+async def revise_content(request: RevisionRequest):
+    """Revise existing content based on user instructions"""
+    try:
+        # Generate revision prompt
+        prompt = generate_revision_prompt(
+            request.content,
+            request.platform,
+            request.content_type,
+            request.instructions
+        )
+        
+        # Use provided API key and model or defaults
+        api_key = request.llm_api_key
+        model = request.llm_model or config["default_model"]
+        base_url = request.llm_base_url or config["base_url"]
+        
+        if not api_key:
+            raise HTTPException(status_code=400, detail="LLM API key is required for revision")
+        
+        llm_response = call_llm_api(prompt, api_key, model, base_url)
+        
+        if "error" in llm_response:
+            raise HTTPException(status_code=500, detail=f"LLM API error: {llm_response['error']}")
+        
+        # Parse the response to extract revised content
+        content = llm_response["content"]
+        
+        # Extract JSON from the content
+        import re
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+        
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Try to find JSON within the text
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+            
+            if start_idx >= 0 and end_idx > start_idx:
+                json_str = content[start_idx:end_idx]
+            else:
+                raise HTTPException(status_code=500, detail="Could not find JSON in LLM response")
+        
+        try:
+            result = json.loads(json_str)
+            if "revised_content" not in result:
+                raise HTTPException(status_code=500, detail="No revised content in response")
+                
+            return {"revised_content": result["revised_content"]}
+            
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Invalid JSON in LLM response")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"Error in revise_content endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/revise")
+async def revise_content(request: RevisionRequest):
+    """Revise existing content based on user instructions"""
+    try:
+        # Generate revision prompt
+        prompt = generate_revision_prompt(
+            request.content,
+            request.platform,
+            request.content_type,
+            request.instructions
+        )
+        
+        # Use provided API key and model or defaults
+        api_key = request.llm_api_key
+        model = request.llm_model or config["default_model"]
+        base_url = request.llm_base_url or config["base_url"]
+        
+        if not api_key:
+            raise HTTPException(status_code=400, detail="LLM API key is required for revision")
+        
+        llm_response = call_llm_api(prompt, api_key, model, base_url)
+        
+        if "error" in llm_response:
+            raise HTTPException(status_code=500, detail=f"LLM API error: {llm_response['error']}")
+        
+        # Parse the response to extract revised content
+        content = llm_response["content"]
+        
+        # Extract JSON from the content
+        import re
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+        
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Try to find JSON within the text
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+            
+            if start_idx >= 0 and end_idx > start_idx:
+                json_str = content[start_idx:end_idx]
+            else:
+                raise HTTPException(status_code=500, detail="Could not find JSON in LLM response")
+        
+        try:
+            result = json.loads(json_str)
+            if "revised_content" not in result:
+                raise HTTPException(status_code=500, detail="No revised content in response")
+                
+            return {"revised_content": result["revised_content"]}
+            
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Invalid JSON in LLM response")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"Error in revise_content endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/config")
 async def get_config():
     """Get current API configuration"""
