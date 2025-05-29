@@ -9,10 +9,12 @@ import { SettingsProvider, SettingsContext } from './components/SettingsContext'
 // Import components
 import Header from './components/Header';
 import Footer from './components/Footer';
+import Sidebar from './components/Sidebar';
 import InputForm from './components/InputForm';
 import ProcessingStatus from './components/ProcessingStatus';
 import ResultsDisplay from './components/ResultsDisplay';
 import Settings from './components/Settings';
+import DocumentEditor from './components/DocumentEditor';
 
 // Main App component
 function AppContent() {
@@ -31,6 +33,9 @@ function AppContent() {
   
   // State to track the content type being processed
   const [contentType, setContentType] = useState('social_media');
+  
+  // State for sidebar visibility
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // API configuration from settings
   const apiConfig = {
@@ -95,6 +100,16 @@ function AppContent() {
     setCurrentStep('input');
   };
   
+  // Function to toggle sidebar
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+  
+  // Function to close sidebar
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+  };
+  
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       <Toaster 
@@ -107,7 +122,8 @@ function AppContent() {
           },
         }}
       />
-      <Header />
+      <Header onMenuToggle={toggleSidebar} />
+      <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
       
       <main className="flex-grow container mx-auto px-4 py-8">
         <Routes>
@@ -139,6 +155,7 @@ function AppContent() {
             }
           />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/document-editor" element={<DocumentEditor />} />
         </Routes>
       </main>
       

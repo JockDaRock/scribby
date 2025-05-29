@@ -1,0 +1,158 @@
+/* Document Editor Preview Styles */
+
+.document-preview h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin: 1.5rem 0 1rem 0;
+  color: #1f2937;
+}
+
+.document-preview h2 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 1.25rem 0 0.75rem 0;
+  color: #1f2937;
+}
+
+.document-preview h3 {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin: 1rem 0 0.5rem 0;
+  color: #1f2937;
+}
+
+.document-preview h4 {
+  font-size: 1.125rem;
+  font-weight: bold;
+  margin: 0.75rem 0 0.5rem 0;
+  color: #1f2937;
+}
+
+.document-preview h5 {
+  font-size: 1rem;
+  font-weight: bold;
+  margin: 0.75rem 0 0.5rem 0;
+  color: #1f2937;
+}
+
+.document-preview h6 {
+  font-size: 0.875rem;
+  font-weight: bold;
+  margin: 0.5rem 0 0.25rem 0;
+  color: #1f2937;
+}
+
+.document-preview p {
+  margin: 0.75rem 0;
+  line-height: 1.6;
+}
+
+.document-preview ul {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.document-preview ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+  list-style-type: decimal;
+}
+
+.document-preview li {
+  margin: 0.25rem 0;
+}
+
+.document-preview blockquote {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid #6366f1;
+  background-color: #f8fafc;
+  font-style: italic;
+  color: #475569;
+}
+
+.document-preview code {
+  background-color: #f1f5f9;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: #dc2626;
+}
+
+.document-preview pre {
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #1e293b;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+}
+
+.document-preview pre code {
+  background-color: transparent;
+  padding: 0;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.document-preview a {
+  color: #6366f1;
+  text-decoration: underline;
+}
+
+.document-preview a:hover {
+  color: #4f46e5;
+}
+
+.document-preview img {
+  max-width: 100%;
+  height: auto;
+  margin: 1rem 0;
+  border-radius: 0.375rem;
+}
+
+.document-preview strong {
+  font-weight: bold;
+}
+
+.document-preview em {
+  font-style: italic;
+}
+
+/* Dark mode styles */
+.dark .document-preview h1,
+.dark .document-preview h2,
+.dark .document-preview h3,
+.dark .document-preview h4,
+.dark .document-preview h5,
+.dark .document-preview h6 {
+  color: #f9fafb;
+}
+
+.dark .document-preview p {
+  color: #e5e7eb;
+}
+
+.dark .document-preview blockquote {
+  background-color: #374151;
+  color: #d1d5db;
+  border-left-color: #8b5cf6;
+}
+
+.dark .document-preview code {
+  background-color: #374151;
+  color: #fca5a5;
+}
+
+.dark .document-preview pre {
+  background-color: #111827;
+}
+
+.dark .document-preview a {
+  color: #a78bfa;
+}
+
+.dark .document-preview a:hover {
+  color: #8b5cf6;
+}

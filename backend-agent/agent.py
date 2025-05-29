@@ -124,6 +124,13 @@ class ConfigModel(BaseModel):
     models: Optional[List[str]] = None
     default_model: Optional[str] = None
 
+class DocumentAssistRequest(BaseModel):
+    content: str
+    instruction: str
+    llm_api_key: str
+    llm_model: Optional[str] = None
+    llm_base_url: Optional[str] = None
+
 # Helper functions
 def generate_job_id():
     """Generate a unique job ID"""
@@ -945,6 +952,86 @@ async def revise_content(request: RevisionRequest):
         raise
     except Exception as e:
         log(f"Error in revise_content endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/document-assist")
+async def document_assist(request: DocumentAssistRequest):
+    """Provide AI assistance for document editing"""
+    try:
+        # Generate a prompt for document assistance
+        prompt = f"""You are an expert writing assistant and editor.
+
+TASK: Help improve the following document content based on the specific instruction provided.
+
+ORIGINAL CONTENT:
+```
+{request.content}
+```
+
+INSTRUCTION:
+{request.instruction}
+
+INSTRUCTIONS:
+1. Carefully read the original content and the instruction.
+2. Apply the requested changes while maintaining the overall quality, tone, and structure.
+3. If the content is empty or very short, create new content based on the instruction.
+4. Ensure the revised content is well-written, clear, and engaging.
+5. Format your response as JSON with the following structure:
+
+```json
+{{
+  "revised_content": "Your improved content here"
+}}
+```
+
+Provide only the JSON response with the revised content."""
+        
+        # Use provided API key and model or defaults
+        api_key = request.llm_api_key
+        model = request.llm_model or config["default_model"]
+        base_url = request.llm_base_url or config["base_url"]
+        
+        if not api_key:
+            raise HTTPException(status_code=400, detail="LLM API key is required for document assistance")
+        
+        llm_response = call_llm_api(prompt, api_key, model, base_url)
+        
+        if "error" in llm_response:
+            raise HTTPException(status_code=500, detail=f"LLM API error: {llm_response['error']}")
+        
+        # Parse the response to extract revised content
+        content = llm_response["content"]
+        
+        # Extract JSON from the content
+        import re
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+        
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Try to find JSON within the text
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+            
+            if start_idx >= 0 and end_idx > start_idx:
+                json_str = content[start_idx:end_idx]
+            else:
+                raise HTTPException(status_code=500, detail="Could not find JSON in LLM response")
+        
+        try:
+            result = json.loads(json_str)
+            if "revised_content" not in result:
+                raise HTTPException(status_code=500, detail="No revised content in response")
+                
+            return {"revised_content": result["revised_content"]}
+            
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Invalid JSON in LLM response")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        log(f"Error in document_assist endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/config")
