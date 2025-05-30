@@ -7,3 +7,5 @@ backend-agent/__pycache__
 gradio-frontend/.venv
 gradio-frontend/__pycache__
 gradio-frontend/outputs
+.venv
+venv
