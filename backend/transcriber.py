@@ -485,6 +485,7 @@ class WhisperAPITranscriber:
                     python_exe, "-m", "yt_dlp", 
                     "--skip-download",
                     "--print", "title",
+                    "--extractor-args", "youtube:player_client=web",
                     youtube_link
                 ]
                 
@@ -511,13 +512,14 @@ class WhisperAPITranscriber:
                 log("Running yt-dlp to download audio...")
                 
                 # Use Python to run yt-dlp as a module for download
+                # Download video directly (no audio extraction) to avoid FFmpeg dependency
+                video_temp_path = temp_path.replace('.mp3', '.%(ext)s')
                 download_cmd = [
                     python_exe, "-m", "yt_dlp", 
                     "--verbose",
-                    "--extract-audio",
-                    "--audio-format", "mp3",
-                    "--audio-quality", "0",
-                    "-o", temp_path,
+                    "--format", "worst[ext=mp4]/worst",  # Get smallest video file
+                    "--extractor-args", "youtube:player_client=web",
+                    "-o", video_temp_path,
                     youtube_link
                 ]
                 
@@ -556,27 +558,32 @@ class WhisperAPITranscriber:
             # Wait a moment to ensure file is fully written
             time.sleep(2)
             
-            # Check if file exists and has content
-            if not os.path.exists(temp_path):
-                log(f"Error: File does not exist at {temp_path}")
-                # Look for any file that might have been created
-                files = os.listdir(temp_dir)
+            # Find the downloaded file (since we used %(ext)s, we need to find the actual file)
+            files = os.listdir(temp_dir)
+            downloaded_file = None
+            
+            for file in files:
+                if file.startswith("youtube_audio_"):
+                    downloaded_file = os.path.join(temp_dir, file)
+                    break
+            
+            if not downloaded_file or not os.path.exists(downloaded_file):
+                log(f"Error: No downloaded file found in {temp_dir}")
                 log(f"Files in temp directory: {files}")
                 
-                if files:
-                    # Use the first file we find
-                    temp_path = os.path.join(temp_dir, files[0])
-                    log(f"Using alternative file: {temp_path}")
+                # Return thumbnail and title even if download failed
+                if thumbnail_url:
+                    return {
+                        "error": "Failed to download YouTube video - no file created",
+                        "title": video_title,
+                        "thumbnail_url": thumbnail_url
+                    }
                 else:
-                    # Return thumbnail and title even if download failed
-                    if thumbnail_url:
-                        return {
-                            "error": "Failed to download YouTube video - no file created",
-                            "title": video_title,
-                            "thumbnail_url": thumbnail_url
-                        }
-                    else:
-                        return {"error": "Failed to download YouTube video - no file created"}
+                    return {"error": "Failed to download YouTube video - no file created"}
+            
+            # Use the found file
+            temp_path = downloaded_file
+            log(f"Found downloaded file: {temp_path}")
             
             file_size = os.path.getsize(temp_path)
             log(f"Downloaded file size: {file_size} bytes")

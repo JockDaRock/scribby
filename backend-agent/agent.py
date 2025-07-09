@@ -82,7 +82,7 @@ class SocialMediaRequest(BaseModel):
     llm_model: Optional[str] = None  # Use default from config if not specified
     llm_base_url: Optional[str] = None  # Optional base URL override
     transcription_base_url: Optional[str] = None  # Optional transcription base URL override 
-    content_type: Optional[str] = "social_media"  # 'social_media' or 'blog'
+    content_type: Optional[str] = "social_media"  # 'social_media', 'blog', or 'video_clips'
     platforms: List[str]
     context: Optional[str] = ""
     audience: Optional[str] = ""
@@ -337,14 +337,25 @@ async def process_content_generation(
             transcript_text = transcription_data["text"]
             
         # Generate prompt for LLM
-        prompt = generate_social_media_prompt(
-            transcript_text, 
-            platforms, 
-            context, 
-            audience, 
-            tags,
-            content_type
-        )
+        # For video clips, pass the complete transcription data with segments
+        if content_type == "video_clips":
+            prompt = generate_social_media_prompt(
+                transcription_data,  # Pass full data for video clips
+                platforms, 
+                context, 
+                audience, 
+                tags,
+                content_type
+            )
+        else:
+            prompt = generate_social_media_prompt(
+                transcript_text,  # Pass text only for other content types
+                platforms, 
+                context, 
+                audience, 
+                tags,
+                content_type
+            )
         
         # Call LLM API
         llm_response = call_llm_api(prompt, llm_api_key, llm_model, llm_base_url)
@@ -366,10 +377,16 @@ async def process_content_generation(
         log(f"Parsed content structure: {json.dumps(parsed_content, indent=2)}")
         
         # Final result
+        # Get transcript text for result
+        if isinstance(transcription_data, dict):
+            result_transcript_text = transcription_data.get("text", "No transcript available")
+        else:
+            result_transcript_text = str(transcription_data) if transcription_data else transcript_text
+            
         result = {
             "content_type": content_type,
             "platforms": platforms,
-            "transcript": transcript_text,
+            "transcript": result_transcript_text,
             "prompt": prompt
         }
         
@@ -384,6 +401,23 @@ async def process_content_generation(
                     "character_count": 0
                 }
                 log("Warning: Blog content not found in parsed response, using fallback")
+        elif content_type == "video_clips":
+            if "suggested_clips" in parsed_content:
+                result["suggested_clips"] = parsed_content["suggested_clips"]
+                result["summary"] = parsed_content.get("summary", {
+                    "total_clips_found": len(parsed_content["suggested_clips"]),
+                    "best_clip_index": 0,
+                    "overall_video_theme": "Video analysis"
+                })
+            else:
+                # Fallback in case the LLM didn't use the expected structure
+                result["suggested_clips"] = []
+                result["summary"] = {
+                    "total_clips_found": 0,
+                    "best_clip_index": -1,
+                    "overall_video_theme": "No clips found"
+                }
+                log("Warning: Video clips not found in parsed response, using fallback")
         else:  # social_media
             result["content"] = parsed_content
         
@@ -395,7 +429,7 @@ async def process_content_generation(
         log(traceback.format_exc())
         update_job_status(job_id, "error", f"Error: {str(e)}")
 
-def generate_social_media_prompt(transcript_text, platforms, context, audience, tags, content_type="social_media"):
+def generate_social_media_prompt(transcript_data, platforms, context, audience, tags, content_type="social_media"):
     """Generate a prompt for the LLM"""
     
     # Create a comma-separated list of platforms
@@ -415,6 +449,12 @@ def generate_social_media_prompt(transcript_text, platforms, context, audience, 
     
     # For blog post generation
     if content_type == "blog":
+        # Extract text from transcript data
+        if isinstance(transcript_data, dict):
+            transcript_text = transcript_data.get("text", "No transcript available")
+        else:
+            transcript_text = str(transcript_data)
+            
         prompt = f"""You are an expert content creator with deep experience creating engaging blog posts.
 
 TASK: Create a comprehensive blog post based on the transcribed content provided below.
@@ -457,7 +497,106 @@ Create a comprehensive, well-written blog post that truly captures the essence o
 """
         return prompt
     
+    # For video clips generation
+    if content_type == "video_clips":
+        # Extract segments data with timestamps
+        if isinstance(transcript_data, dict) and "segments" in transcript_data:
+            # Format segments with precise timestamps
+            formatted_segments = []
+            for segment in transcript_data["segments"]:
+                start_time = segment.get("start", 0)
+                end_time = segment.get("end", 0)
+                text = segment.get("text", "").strip()
+                
+                # Convert seconds to MM:SS format
+                start_min, start_sec = divmod(int(start_time), 60)
+                end_min, end_sec = divmod(int(end_time), 60)
+                start_timestamp = f"{start_min:02d}:{start_sec:02d}"
+                end_timestamp = f"{end_min:02d}:{end_sec:02d}"
+                
+                formatted_segments.append(f"[{start_timestamp}-{end_timestamp}] {text}")
+            
+            transcript_with_timestamps = "\n".join(formatted_segments)
+            total_duration = transcript_data.get("duration", 0)
+            duration_min, duration_sec = divmod(int(total_duration), 60)
+            total_duration_str = f"{duration_min:02d}:{duration_sec:02d}"
+        else:
+            # Fallback if no segments data
+            transcript_with_timestamps = str(transcript_data) if isinstance(transcript_data, str) else transcript_data.get("text", "No transcript available")
+            total_duration_str = "Unknown"
+        
+        prompt = f"""You are an expert video editor and content strategist specializing in creating short-form content for developer advocates and technical creators.
+
+TASK: Analyze the transcribed video content below and identify segments that would make excellent short clips (89 seconds or less) for social media platforms.
+
+VIDEO INFORMATION:
+- Total Duration: {total_duration_str}
+
+TRANSCRIPTION WITH PRECISE TIMESTAMPS:
+```
+{transcript_with_timestamps}
+```
+
+ADDITIONAL CONTEXT:
+{context}
+
+TARGET AUDIENCE:
+{audience}
+
+INSTRUCTIONS:
+1. Analyze the transcript text, identify 3-8 potential short clips from that transcript text, match the selected text with the segments and with their EXACT timestamps..
+2. Use ONLY the precise timestamps provided in the transcript segments - do not make up times.
+3. Each clip should span multiple consecutive segments that form a complete, standalone story or concept.
+4. Look for these types of moments:
+   - Quick demos or code walkthroughs
+   - Key insights or "aha moments"
+   - Problem/solution explanations
+   - Tool introductions or comparisons
+   - Step-by-step tutorials
+   - Technical tips and tricks
+5. Each clip should be between 30-89 seconds for optimal social media engagement.
+6. Calculate duration_seconds by subtracting start time from end time.
+7. Use MM:SS format for timestamps (e.g., "05:30" for 5 minutes 30 seconds).
+8. Provide a confidence score (0-1) based on how engaging and complete the segment is.
+9. Suggest the best platforms for each clip based on content type and style.
+10. Format your response as JSON with the following structure:
+
+```json
+{{
+  "suggested_clips": [
+    {{
+      "start_time": "MM:SS or HH:MM:SS format",
+      "end_time": "MM:SS or HH:MM:SS format", 
+      "duration_seconds": 65,
+      "title": "Descriptive title for the clip",
+      "hook": "Engaging opening line or description",
+      "content_type": "demo|explanation|tutorial|insight|comparison",
+      "key_topics": ["topic1", "topic2"],
+      "confidence_score": 0.85,
+      "suggested_platforms": ["TikTok", "YouTube Shorts", "LinkedIn"],
+      "why_engaging": "Brief explanation of why this segment would perform well",
+      "call_to_action": "Suggested CTA for the clip"
+    }}
+  ],
+  "summary": {{
+    "total_clips_found": 5,
+    "best_clip_index": 0,
+    "overall_video_theme": "Brief description of main video topic"
+  }}
+}}
+```
+
+Focus on finding moments that would be valuable for developer advocates to share - practical demonstrations, clear explanations of complex concepts, and actionable insights.
+"""
+        return prompt
+    
     # Default to social media prompt
+    # Extract text from transcript data
+    if isinstance(transcript_data, dict):
+        transcript_text = transcript_data.get("text", "No transcript available")
+    else:
+        transcript_text = str(transcript_data)
+        
     prompt = f"""You are an expert social media manager with deep experience creating engaging content for various platforms.
 
 CRITICAL INSTRUCTION: You must ONLY create content for these specific platforms: {platforms_str}
@@ -538,14 +677,23 @@ def call_llm_api(prompt, api_key, model, base_url=None):
             "Content-Type": "application/json"
         }
         
+        # Adjust max_tokens based on the prompt content
+        max_tokens = 4000 if "video clips" in prompt.lower() or "suggested_clips" in prompt.lower() else 2000
+        
+        # Adjust system message based on content type
+        if "video clips" in prompt.lower() or "suggested_clips" in prompt.lower():
+            system_message = "You are an expert video editor and content strategist. Always respond with valid JSON format."
+        else:
+            system_message = "You are an expert social media content creator. Always respond with valid JSON format."
+        
         data = {
             "model": model,
             "messages": [
-                {"role": "system", "content": "You are an expert social media content creator."},
+                {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 2000
+            "max_tokens": max_tokens
         }
         
         # Log request details (without sensitive info)
@@ -567,6 +715,7 @@ def call_llm_api(prompt, api_key, model, base_url=None):
         
         if "choices" in response_data and len(response_data["choices"]) > 0:
             content = response_data["choices"][0]["message"]["content"]
+            log(f"LLM response content (first 1000 chars): {content[:1000]}")
             return {"content": content}
         else:
             return {"error": "Invalid response format from LLM API"}
@@ -608,13 +757,43 @@ def parse_llm_response(llm_response, platforms, content_type="social_media"):
             log(f"Parsed JSON structure: {json.dumps(result, indent=2)}")
         except json.JSONDecodeError as e:
             log(f"JSON decode error: {str(e)}")
-            # Try some basic cleanup before failing
-            json_str = json_str.replace('\n', '').replace('\r', '')
+            log(f"Problematic JSON string (first 1000 chars): {json_str[:1000]}")
+            
+            # Try more aggressive cleanup for common LLM JSON issues
+            cleaned_json = json_str
+            
+            # Remove newlines and carriage returns
+            cleaned_json = cleaned_json.replace('\n', '').replace('\r', '')
+            
+            # Fix common issues with unescaped quotes in strings
+            # This is a basic fix - for production you'd want more sophisticated handling
+            import re
+            # Fix trailing commas
+            cleaned_json = re.sub(r',\s*}', '}', cleaned_json)
+            cleaned_json = re.sub(r',\s*]', ']', cleaned_json)
+            
+            # Try to fix unescaped quotes in values (basic approach)
+            # This is risky but can help with some malformed JSON
+            
             try:
-                result = json.loads(json_str)
+                result = json.loads(cleaned_json)
                 log(f"Parsed JSON after cleanup: {json.dumps(result, indent=2)}")
-            except Exception as e:
-                log(f"Failed to parse JSON even after cleanup: {str(e)}")
+            except Exception as e2:
+                log(f"Failed to parse JSON even after cleanup: {str(e2)}")
+                log(f"Cleaned JSON (first 1000 chars): {cleaned_json[:1000]}")
+                
+                # Return a fallback response for video clips
+                if content_type == "video_clips":
+                    log("Returning fallback video clips response due to JSON parse error")
+                    return {
+                        "suggested_clips": [],
+                        "summary": {
+                            "total_clips_found": 0,
+                            "best_clip_index": -1,
+                            "overall_video_theme": "Analysis failed due to response format error"
+                        }
+                    }
+                
                 return {"error": "Invalid JSON in LLM response"}
         
         # For blog content
@@ -629,6 +808,47 @@ def parse_llm_response(llm_response, platforms, content_type="social_media"):
             # Ensure character_count is present and accurate for blog content
             if "text" in result["blog_content"]:
                 result["blog_content"]["character_count"] = len(result["blog_content"]["text"])
+            return result
+        
+        # For video clips content
+        if content_type == "video_clips":
+            # Check if suggested_clips is present
+            if "suggested_clips" not in result:
+                result["suggested_clips"] = []
+            
+            # Validate and clean up clip data
+            validated_clips = []
+            for i, clip in enumerate(result.get("suggested_clips", [])):
+                try:
+                    # Ensure required fields are present
+                    validated_clip = {
+                        "start_time": clip.get("start_time", "00:00"),
+                        "end_time": clip.get("end_time", "00:00"),
+                        "duration_seconds": clip.get("duration_seconds", 0),
+                        "title": clip.get("title", f"Clip {i+1}"),
+                        "hook": clip.get("hook", ""),
+                        "content_type": clip.get("content_type", "explanation"),
+                        "key_topics": clip.get("key_topics", []),
+                        "confidence_score": min(max(float(clip.get("confidence_score", 0.5)), 0.0), 1.0),
+                        "suggested_platforms": clip.get("suggested_platforms", ["YouTube Shorts"]),
+                        "why_engaging": clip.get("why_engaging", ""),
+                        "call_to_action": clip.get("call_to_action", "")
+                    }
+                    validated_clips.append(validated_clip)
+                except (ValueError, TypeError) as e:
+                    log(f"Error validating clip {i}: {str(e)}")
+                    continue
+            
+            result["suggested_clips"] = validated_clips
+            
+            # Ensure summary is present
+            if "summary" not in result:
+                result["summary"] = {
+                    "total_clips_found": len(validated_clips),
+                    "best_clip_index": 0 if validated_clips else -1,
+                    "overall_video_theme": "Video analysis"
+                }
+            
             return result
         
         # For social media content (default)

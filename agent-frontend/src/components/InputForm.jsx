@@ -90,10 +90,11 @@ const InputForm = ({ apiConfig, onSubmit }) => {
   const handleContentTypeChange = (type) => {
     setContentType(type);
     
-    // If switching to blog type, ensure at least one platform is selected
+    // If switching to blog or video_clips type, ensure at least one platform is selected
     // This is needed because the backend still requires platforms even for blog content
-    if (type === 'blog' && selectedPlatforms.length === 0 && availablePlatforms.length > 0) {
-      // Select all platforms by default for blog posts
+    // For video clips, we need platforms so the AI can suggest appropriate platforms for each clip
+    if ((type === 'blog' || type === 'video_clips') && selectedPlatforms.length === 0 && availablePlatforms.length > 0) {
+      // Select all platforms by default
       setSelectedPlatforms(availablePlatforms.map(platform => platform.id));
     }
   };
@@ -228,7 +229,9 @@ const InputForm = ({ apiConfig, onSubmit }) => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 max-w-4xl mx-auto transition-colors duration-300">
       <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 dark:text-white">
-        {contentType === 'social_media' ? 'Create Social Media Content' : 'Create Blog Post'}
+        {contentType === 'social_media' ? 'Create Social Media Content' : 
+         contentType === 'blog' ? 'Create Blog Post' :
+         'Analyze Video for Clips'}
       </h2>
       
       {/* Settings notification banner */}
@@ -424,14 +427,25 @@ const InputForm = ({ apiConfig, onSubmit }) => {
             >
               Blog Post
             </button>
+            <button
+              type="button"
+              className={`px-4 py-2 rounded-md ${
+                contentType === 'video_clips' 
+                  ? 'bg-indigo-600 dark:bg-purple-700 text-white' 
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+              } transition-colors duration-300`}
+              onClick={() => handleContentTypeChange('video_clips')}
+            >
+              🎬 Video Clips
+            </button>
           </div>
         </div>
         
-        {/* Platform Selection - Only show for social media content type */}
-        <div className={`mb-6 ${contentType === 'social_media' ? 'block' : 'hidden'}`}>
+        {/* Platform Selection - Show for social media and video clips content types */}
+        <div className={`mb-6 ${(contentType === 'social_media' || contentType === 'video_clips') ? 'block' : 'hidden'}`}>
           <div className="flex justify-between items-center mb-2">
             <label className="block text-gray-700 dark:text-gray-200 text-sm font-bold">
-              Social Media Platforms
+              {contentType === 'video_clips' ? 'Target Platforms for Clips' : 'Social Media Platforms'}
             </label>
             <button
               type="button"
@@ -523,7 +537,9 @@ const InputForm = ({ apiConfig, onSubmit }) => {
                 Processing...
               </span>
             ) : (
-              'Generate Content'
+              contentType === 'social_media' ? 'Generate Social Media Content' :
+              contentType === 'blog' ? 'Generate Blog Post' :
+              'Analyze Video for Clips'
             )}
           </button>
         </div>

@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { SettingsContext } from './SettingsContext';
 import { ThemeContext } from './ThemeContext';
+import VideoClipsDisplay from './VideoClipsDisplay';
 
 // Custom styles for syntax highlighting
 const customDarkStyle = {
@@ -696,7 +697,10 @@ const BlogCard = ({ blogContent }) => {
 const ResultsDisplay = ({ results, onReset }) => {
   const [activeTab, setActiveTab] = useState('content');
   
-  if (!results || (results.content_type === 'social_media' && !results.content) || (results.content_type === 'blog' && !results.blog_content)) {
+  if (!results || 
+      (results.content_type === 'social_media' && !results.content) || 
+      (results.content_type === 'blog' && !results.blog_content) ||
+      (results.content_type === 'video_clips' && !results.suggested_clips)) {
     return (
       <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md dark:shadow-lg transition-colors duration-300">
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 dark:text-white">Results</h2>
@@ -710,6 +714,17 @@ const ResultsDisplay = ({ results, onReset }) => {
           </button>
         </div>
       </div>
+    );
+  }
+  
+  // For video clips, use the specialized VideoClipsDisplay component
+  if (results.content_type === 'video_clips') {
+    return (
+      <VideoClipsDisplay 
+        clips={results.suggested_clips} 
+        summary={results.summary}
+        onReset={onReset}
+      />
     );
   }
   
@@ -727,7 +742,9 @@ const ResultsDisplay = ({ results, onReset }) => {
           }`}
           onClick={() => setActiveTab('content')}
         >
-          {results.content_type === 'blog' ? 'Blog Post' : 'Social Media Posts'}
+          {results.content_type === 'blog' ? 'Blog Post' : 
+           results.content_type === 'video_clips' ? 'Video Clips' : 
+           'Social Media Posts'}
         </button>
         <button
           className={`py-2 px-4 font-medium transition-colors duration-300 ${

@@ -4,5 +4,5 @@
     "whisper-1",
     "distil-whisper-large-v3-en"
   ],
-  "default_model": "whisper-1"
+  "default_model": "distil-whisper-large-v3-en"
 }
