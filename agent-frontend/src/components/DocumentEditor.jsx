@@ -116,6 +116,23 @@ const DocumentEditor = () => {
       return `${codeBlockPlaceholder}${codeBlocks.length - 1}`;
     });
     
+    // Helper function to process inline formatting
+    const processInlineFormatting = (text) => {
+      return text
+        // Handle inline code (but not code blocks)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        
+        // Handle bold and italic
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        
+        // Handle links
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+        
+        // Handle images
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;" />');
+    };
+    
     // Handle lists - this is more complex to get right
     const lines = htmlContent.split('\n');
     let htmlLines = [];
@@ -137,7 +154,8 @@ const DocumentEditor = () => {
           inOrderedList = false;
         }
         const text = line.replace(/^- (.*)/, '$1');
-        htmlLines.push(`<li>${text}</li>`);
+        const processedText = processInlineFormatting(text);
+        htmlLines.push(`<li>${processedText}</li>`);
       } else if (isOrderedItem) {
         if (!inOrderedList) {
           htmlLines.push('<ol>');
@@ -148,7 +166,8 @@ const DocumentEditor = () => {
           inUnorderedList = false;
         }
         const text = line.replace(/^\d+\. (.*)/, '$1');
-        htmlLines.push(`<li>${text}</li>`);
+        const processedText = processInlineFormatting(text);
+        htmlLines.push(`<li>${processedText}</li>`);
       } else {
         if (inUnorderedList) {
           htmlLines.push('</ul>');
@@ -169,21 +188,13 @@ const DocumentEditor = () => {
           .replace(/^##### (.*$)/, '<h5>$1</h5>')
           .replace(/^###### (.*$)/, '<h6>$1</h6>')
           
-          // Handle inline code (but not code blocks)
-          .replace(/`([^`]+)`/g, '<code>$1</code>')
-          
-          // Handle bold and italic
-          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-          
-          // Handle links
-          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-          
-          // Handle images
-          .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;" />')
-          
           // Handle blockquotes
           .replace(/^> (.*$)/, '<blockquote>$1</blockquote>');
+        
+        // Apply inline formatting to non-heading, non-blockquote lines
+        if (!processedLine.match(/^<h[1-6]>/) && !processedLine.match(/^<blockquote>/)) {
+          processedLine = processInlineFormatting(processedLine);
+        }
         
         // Add paragraphs for non-empty lines that aren't already wrapped in HTML tags
         if (processedLine.trim() && !processedLine.match(/^<[^>]+>/) && !processedLine.includes(codeBlockPlaceholder)) {
