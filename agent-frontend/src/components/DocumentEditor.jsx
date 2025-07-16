@@ -2,6 +2,8 @@ import React, { useState, useContext, useRef, useEffect } from 'react';
 import { SettingsContext } from './SettingsContext';
 import toast from 'react-hot-toast';
 import './DocumentPreview.css';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, LevelFormat, AlignmentType } from 'docx';
+import jsPDF from 'jspdf';
 
 const DocumentEditor = () => {
   const { settings } = useContext(SettingsContext);
@@ -371,6 +373,409 @@ const DocumentEditor = () => {
       .replace(/\n/g, '<br>');
   };
 
+  const handleWordExport = async () => {
+    try {
+      toast.loading('Generating Word document...', { id: 'word-export' });
+      
+      const content = markdownContent || '';
+      if (!content.trim()) {
+        toast.error('Document is empty. Please add some content before exporting.');
+        return;
+      }
+
+      // Parse markdown content into document structure
+      const lines = content.split('\n');
+      const docElements = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        if (!line) {
+          // Add empty paragraph for spacing
+          docElements.push(new Paragraph({ text: '' }));
+          continue;
+        }
+
+        // Handle headings
+        if (line.startsWith('#')) {
+          const level = line.match(/^#+/)[0].length;
+          const text = line.replace(/^#+\s*/, '');
+          const headingLevel = Math.min(level, 6);
+          
+          docElements.push(
+            new Paragraph({
+              text: text,
+              heading: [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, 
+                       HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6][headingLevel - 1],
+              spacing: { before: 240, after: 120 }
+            })
+          );
+        }
+        // Handle blockquotes
+        else if (line.startsWith('>')) {
+          const quoteText = line.replace(/^>\s*/, '');
+          docElements.push(
+            new Paragraph({
+              children: [new TextRun({ text: quoteText, italics: true })],
+              indent: { left: 720 },
+              spacing: { before: 120, after: 120 }
+            })
+          );
+        }
+        // Handle unordered lists
+        else if (line.startsWith('- ')) {
+          const text = line.replace(/^-\s*/, '');
+          docElements.push(
+            new Paragraph({
+              text: text,
+              bullet: { level: 0 },
+              spacing: { before: 60, after: 60 }
+            })
+          );
+        }
+        // Handle ordered lists
+        else if (line.match(/^\d+\.\s/)) {
+          const text = line.replace(/^\d+\.\s*/, '');
+          docElements.push(
+            new Paragraph({
+              text: text,
+              numbering: { reference: 'my-numbering', level: 0 },
+              spacing: { before: 60, after: 60 }
+            })
+          );
+        }
+        // Handle code blocks
+        else if (line.startsWith('```')) {
+          // Find the end of the code block
+          let codeContent = '';
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim().startsWith('```')) {
+            codeContent += lines[j] + '\n';
+            j++;
+          }
+          i = j; // Skip to the end of the code block
+          
+          docElements.push(
+            new Paragraph({
+              children: [new TextRun({ 
+                text: codeContent.trim(), 
+                font: { name: 'Courier New' },
+                size: 20
+              })],
+              spacing: { before: 120, after: 120 },
+              indent: { left: 360 }
+            })
+          );
+        }
+        // Handle regular paragraphs
+        else {
+          // Process inline formatting properly
+          const children = [];
+          let remaining = line;
+          
+          // Parse the text to handle inline formatting
+          while (remaining) {
+            // Look for bold text
+            const boldMatch = remaining.match(/\*\*([^*]+)\*\*/);
+            if (boldMatch) {
+              // Add text before bold
+              if (boldMatch.index > 0) {
+                children.push(new TextRun({ text: remaining.substring(0, boldMatch.index) }));
+              }
+              // Add bold text
+              children.push(new TextRun({ text: boldMatch[1], bold: true }));
+              remaining = remaining.substring(boldMatch.index + boldMatch[0].length);
+              continue;
+            }
+            
+            // Look for italic text
+            const italicMatch = remaining.match(/\*([^*]+)\*/);
+            if (italicMatch) {
+              // Add text before italic
+              if (italicMatch.index > 0) {
+                children.push(new TextRun({ text: remaining.substring(0, italicMatch.index) }));
+              }
+              // Add italic text
+              children.push(new TextRun({ text: italicMatch[1], italics: true }));
+              remaining = remaining.substring(italicMatch.index + italicMatch[0].length);
+              continue;
+            }
+            
+            // Look for inline code
+            const codeMatch = remaining.match(/`([^`]+)`/);
+            if (codeMatch) {
+              // Add text before code
+              if (codeMatch.index > 0) {
+                children.push(new TextRun({ text: remaining.substring(0, codeMatch.index) }));
+              }
+              // Add code text
+              children.push(new TextRun({ 
+                text: codeMatch[1], 
+                font: { name: 'Courier New' },
+                size: 20
+              }));
+              remaining = remaining.substring(codeMatch.index + codeMatch[0].length);
+              continue;
+            }
+            
+            // No more formatting, add remaining text
+            children.push(new TextRun({ text: remaining }));
+            break;
+          }
+          
+          // If no content was processed, add the original line
+          if (children.length === 0) {
+            children.push(new TextRun({ text: line }));
+          }
+          
+          docElements.push(
+            new Paragraph({
+              children: children,
+              spacing: { before: 120, after: 120 }
+            })
+          );
+        }
+      }
+
+      // Create the document with proper structure and compatibility
+      const doc = new Document({
+        creator: 'Scribby Document Editor',
+        title: 'Scribby Document',
+        description: 'Document created with Scribby',
+        numbering: {
+          config: [
+            {
+              reference: 'my-numbering',
+              levels: [
+                {
+                  level: 0,
+                  format: LevelFormat.DECIMAL,
+                  text: '%1.',
+                  alignment: AlignmentType.LEFT,
+                  style: {
+                    paragraph: {
+                      indent: { left: 720, hanging: 360 },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        sections: [
+          {
+            properties: {},
+            children: docElements.length > 0 ? docElements : [
+              new Paragraph({
+                text: 'Empty Document',
+                spacing: { before: 120, after: 120 }
+              })
+            ]
+          }
+        ]
+      });
+
+      // Generate and download the document
+      const buffer = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(buffer);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `scribby-document-${new Date().toISOString().slice(0, 10)}.docx`;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Word document exported successfully!', { id: 'word-export' });
+    } catch (error) {
+      console.error('Word export error:', error);
+      toast.error('Failed to export Word document. Please try again.', { id: 'word-export' });
+    }
+  };
+
+  const handlePDFExport = async () => {
+    try {
+      toast.loading('Generating PDF document...', { id: 'pdf-export' });
+      
+      const content = markdownContent || '';
+      if (!content.trim()) {
+        toast.error('Document is empty. Please add some content before exporting.');
+        return;
+      }
+
+      // Create a new jsPDF instance
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Set up document properties
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxLineWidth = pageWidth - 2 * margin;
+      
+      let yPosition = margin;
+      const lineHeight = 7;
+      const paragraphSpacing = 10;
+
+      // Parse markdown content line by line
+      const lines = content.split('\n');
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines but add some spacing
+        if (!line) {
+          yPosition += lineHeight / 2;
+          continue;
+        }
+
+        // Check if we need a new page
+        if (yPosition > pageHeight - margin) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        // Handle headings
+        if (line.startsWith('#')) {
+          const level = line.match(/^#+/)[0].length;
+          const text = line.replace(/^#+\s*/, '');
+          
+          // Set font size based on heading level
+          const fontSize = Math.max(20 - (level - 1) * 2, 12);
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica', 'bold');
+          
+          yPosition += paragraphSpacing;
+          
+          // Split text if it's too long
+          const textLines = doc.splitTextToSize(text, maxLineWidth);
+          textLines.forEach((textLine) => {
+            if (yPosition > pageHeight - margin) {
+              doc.addPage();
+              yPosition = margin;
+            }
+            doc.text(textLine, margin, yPosition);
+            yPosition += lineHeight + 2;
+          });
+          
+          yPosition += paragraphSpacing / 2;
+        }
+        // Handle blockquotes
+        else if (line.startsWith('>')) {
+          const quoteText = line.replace(/^>\s*/, '');
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'italic');
+          
+          yPosition += paragraphSpacing / 2;
+          
+          const textLines = doc.splitTextToSize(quoteText, maxLineWidth - 20);
+          textLines.forEach((textLine) => {
+            if (yPosition > pageHeight - margin) {
+              doc.addPage();
+              yPosition = margin;
+            }
+            doc.text(textLine, margin + 10, yPosition);
+            yPosition += lineHeight;
+          });
+          
+          yPosition += paragraphSpacing / 2;
+        }
+        // Handle lists
+        else if (line.startsWith('- ') || line.match(/^\d+\.\s/)) {
+          const text = line.replace(/^[-\d.]\s*/, '');
+          const bullet = line.startsWith('- ') ? '• ' : '1. ';
+          
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'normal');
+          
+          const textLines = doc.splitTextToSize(text, maxLineWidth - 20);
+          textLines.forEach((textLine, index) => {
+            if (yPosition > pageHeight - margin) {
+              doc.addPage();
+              yPosition = margin;
+            }
+            const prefix = index === 0 ? bullet : '  ';
+            doc.text(prefix + textLine, margin + 10, yPosition);
+            yPosition += lineHeight;
+          });
+        }
+        // Handle code blocks
+        else if (line.startsWith('```')) {
+          // Find the end of the code block
+          let codeContent = '';
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim().startsWith('```')) {
+            codeContent += lines[j] + '\n';
+            j++;
+          }
+          i = j; // Skip to the end of the code block
+          
+          doc.setFontSize(10);
+          doc.setFont('courier', 'normal');
+          
+          yPosition += paragraphSpacing / 2;
+          
+          const codeLines = codeContent.split('\n');
+          codeLines.forEach((codeLine) => {
+            if (yPosition > pageHeight - margin) {
+              doc.addPage();
+              yPosition = margin;
+            }
+            doc.text(codeLine, margin + 5, yPosition);
+            yPosition += lineHeight;
+          });
+          
+          yPosition += paragraphSpacing / 2;
+        }
+        // Handle regular paragraphs
+        else {
+          // Process inline formatting (simplified)
+          let processedText = line
+            .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold markers for PDF
+            .replace(/\*([^*]+)\*/g, '$1') // Remove italic markers for PDF
+            .replace(/`([^`]+)`/g, '$1'); // Remove inline code markers for PDF
+          
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'normal');
+          
+          const textLines = doc.splitTextToSize(processedText, maxLineWidth);
+          textLines.forEach((textLine) => {
+            if (yPosition > pageHeight - margin) {
+              doc.addPage();
+              yPosition = margin;
+            }
+            doc.text(textLine, margin, yPosition);
+            yPosition += lineHeight;
+          });
+          
+          yPosition += paragraphSpacing / 2;
+        }
+      }
+
+      // Add page numbers
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin - 20, pageHeight - 10);
+      }
+
+      // Save the PDF
+      doc.save(`scribby-document-${new Date().toISOString().slice(0, 10)}.pdf`);
+      
+      toast.success('PDF document exported successfully!', { id: 'pdf-export' });
+    } catch (error) {
+      console.error('PDF export error:', error);
+      toast.error('Failed to export PDF document. Please try again.', { id: 'pdf-export' });
+    }
+  };
+
   const renderEditor = () => {
     switch (activeTab) {
       case 'text': // Preview Tab - Shows rendered content
@@ -545,6 +950,27 @@ const DocumentEditor = () => {
                 >
                   <span>📝</span>
                   <span>Markdown (.md)</span>
+                </button>
+                <div className="border-t border-gray-200 dark:border-gray-600 my-1"></div>
+                <button
+                  onClick={() => {
+                    handleWordExport();
+                    setSaveDropdownOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors duration-200 flex items-center space-x-2"
+                >
+                  <span>📄</span>
+                  <span>Word Document (.docx)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handlePDFExport();
+                    setSaveDropdownOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors duration-200 flex items-center space-x-2"
+                >
+                  <span>📕</span>
+                  <span>PDF Document (.pdf)</span>
                 </button>
               </div>
             </div>
