@@ -130,6 +130,7 @@ class DocumentAssistRequest(BaseModel):
     llm_api_key: str
     llm_model: Optional[str] = None
     llm_base_url: Optional[str] = None
+    selected_text: Optional[str] = None
 
 # Helper functions
 def generate_job_id():
@@ -959,7 +960,44 @@ async def document_assist(request: DocumentAssistRequest):
     """Provide AI assistance for document editing"""
     try:
         # Generate a prompt for document assistance
-        prompt = f"""You are an expert writing assistant and editor.
+        if request.selected_text:
+            # Handle selected text editing
+            prompt = f"""You are an expert writing assistant and editor.
+
+TASK: Help improve the selected text based on the specific instruction provided.
+
+FULL DOCUMENT CONTEXT:
+```
+{request.content}
+```
+
+SELECTED TEXT TO EDIT:
+```
+{request.selected_text}
+```
+
+INSTRUCTION:
+{request.instruction}
+
+INSTRUCTIONS:
+1. Focus on improving ONLY the selected text portion.
+2. Consider the full document context to ensure the changes fit well.
+3. Apply the requested changes while maintaining the overall quality, tone, and structure.
+4. Keep the same formatting style as the original selected text.
+5. If the selected text is empty or very short, create new content based on the instruction.
+6. Ensure the revised content is well-written, clear, and engaging.
+7. Format your response as JSON with the following structure:
+
+```json
+{{
+  "revised_content": "Your improved selected text here"
+}}
+```
+
+Provide only the JSON response with the revised selected text."""
+        else:
+            # Handle full document editing (original behavior)
+            prompt = f"""You are an expert writing assistant and editor.
 
 TASK: Help improve the following document content based on the specific instruction provided.
 

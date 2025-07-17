@@ -1,20 +1,42 @@
-import React, { useState, useContext, useRef, useEffect } from 'react';
+import React, { useState, useContext, useRef, useEffect, useCallback } from 'react';
 import { SettingsContext } from './SettingsContext';
 import toast from 'react-hot-toast';
 import './DocumentPreview.css';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, LevelFormat, AlignmentType } from 'docx';
 import jsPDF from 'jspdf';
+import { useTextSelection } from './TextSelectionManager';
+import FloatingToolbar from './FloatingToolbar';
+import PreviewModal from './PreviewModal';
 
 const DocumentEditor = () => {
   const { settings } = useContext(SettingsContext);
   const [activeTab, setActiveTab] = useState('markdown'); // Start with markdown for editing
-  const [textContent, setTextContent] = useState('');
   const [wordpressContent, setWordpressContent] = useState('');
   const [markdownContent, setMarkdownContent] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('Normal text');
   const [isAiAssisting, setIsAiAssisting] = useState(false);
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false);
   const saveDropdownRef = useRef(null);
+  const markdownEditorRef = useRef(null);
+  
+  // Text selection state
+  const { selectionData, replaceSelectedText, refreshSelection, restoreLastSelection, hasStoredSelection } = useTextSelection(markdownEditorRef);
+  const [previewModal, setPreviewModal] = useState({
+    isOpen: false,
+    originalText: '',
+    suggestedText: '',
+    isLoading: false,
+    error: null
+  });
+  
+  // Undo functionality
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  const handleTextChange = useCallback((content) => {
+    setMarkdownContent(content);
+    updateOtherFormats(content);
+  }, []);
 
   const formatOptions = [
     'Normal text',
@@ -49,6 +71,60 @@ const DocumentEditor = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Define undo/redo functions with useCallback to prevent dependency issues
+  const handleUndo = useCallback(() => {
+    if (undoStack.length > 0) {
+      const lastState = undoStack[undoStack.length - 1];
+      setRedoStack(prev => [markdownContent, ...prev.slice(0, 19)]);
+      setUndoStack(prev => prev.slice(0, -1));
+      setMarkdownContent(lastState);
+      updateOtherFormats(lastState);
+      toast.success('Undone');
+    }
+  }, [undoStack, markdownContent]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length > 0) {
+      const nextState = redoStack[0];
+      setUndoStack(prev => [...prev.slice(-19), markdownContent]);
+      setRedoStack(prev => prev.slice(1));
+      setMarkdownContent(nextState);
+      updateOtherFormats(nextState);
+      toast.success('Redone');
+    }
+  }, [redoStack, markdownContent]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+      } else if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+        event.preventDefault();
+        handleRedo();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleUndo, handleRedo]);
+
+  // Refresh selection when switching to markdown tab
+  useEffect(() => {
+    if (activeTab === 'markdown') {
+      // Use setTimeout to ensure the textarea is focused and ready
+      setTimeout(() => {
+        // Try to restore the last selection first, then refresh
+        if (!restoreLastSelection()) {
+          refreshSelection();
+        }
+      }, 100);
+    }
+  }, [activeTab, refreshSelection, restoreLastSelection]);
 
   const handleFormatChange = (format) => {
     setSelectedFormat(format);
@@ -221,12 +297,6 @@ const DocumentEditor = () => {
     });
 
     setWordpressContent(wpContent);
-    setTextContent(content); // Text content is now the same as markdown for processing
-  };
-
-  const handleTextChange = (content) => {
-    setMarkdownContent(content);
-    updateOtherFormats(content);
   };
 
   const handleAiAssist = async (instruction) => {
@@ -259,6 +329,7 @@ const DocumentEditor = () => {
       }
 
       const data = await response.json();
+      saveToUndoStack(); // Save current state before applying AI changes
       handleTextChange(data.revised_content || data.content);
       toast.success('AI assistance applied!');
 
@@ -268,6 +339,93 @@ const DocumentEditor = () => {
     } finally {
       setIsAiAssisting(false);
     }
+  };
+
+  const handleSelectedTextAiAssist = async (operationId, instruction) => {
+    if (!settings.llmApiKey) {
+      toast.error('LLM API key is required for AI assistance. Please check your settings.');
+      return;
+    }
+
+    if (!selectionData.selectedText) {
+      toast.error('Please select some text first.');
+      return;
+    }
+
+    setPreviewModal({
+      isOpen: true,
+      originalText: selectionData.selectedText,
+      suggestedText: '',
+      isLoading: true,
+      error: null
+    });
+
+    try {
+      const agentApiUrl = settings.llmApiUrl || process.env.REACT_APP_AGENT_API_URL || 'http://localhost:8001';
+      const response = await fetch(`${agentApiUrl}/document-assist`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: markdownContent,
+          selected_text: selectionData.selectedText,
+          instruction: instruction,
+          llm_api_key: settings.llmApiKey,
+          llm_model: settings.defaultLlmModel,
+          llm_base_url: settings.llmBaseUrl
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`AI assistance request failed: ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.revised_content) {
+        setPreviewModal(prev => ({
+          ...prev,
+          suggestedText: data.revised_content,
+          isLoading: false
+        }));
+      } else {
+        setPreviewModal(prev => ({
+          ...prev,
+          error: 'No revised content received from AI',
+          isLoading: false
+        }));
+      }
+    } catch (error) {
+      console.error('AI assistance error:', error);
+      setPreviewModal(prev => ({
+        ...prev,
+        error: 'Failed to get AI assistance. Please try again.',
+        isLoading: false
+      }));
+    }
+  };
+
+  const saveToUndoStack = () => {
+    setUndoStack(prev => [...prev.slice(-19), markdownContent]); // Keep last 20 states
+    setRedoStack([]); // Clear redo stack when new change is made
+  };
+
+  const handleApplyChanges = (newText) => {
+    saveToUndoStack(); // Save current state before applying changes
+    replaceSelectedText(newText, handleTextChange);
+    toast.success('Changes applied successfully!');
+  };
+
+  const handleClosePreview = () => {
+    setPreviewModal({
+      isOpen: false,
+      originalText: '',
+      suggestedText: '',
+      isLoading: false,
+      error: null
+    });
   };
 
   const handleSave = () => {
@@ -837,8 +995,41 @@ const DocumentEditor = () => {
                 </div>
               </div>
 
-              {/* AI Assist Buttons */}
+              {/* AI Assist and Undo/Redo Buttons */}
               <div className="flex space-x-2">
+                {/* Undo/Redo buttons */}
+                <button
+                  onClick={handleUndo}
+                  disabled={undoStack.length === 0}
+                  className="px-3 py-2 bg-gray-500 dark:bg-gray-600 text-white rounded-lg hover:bg-gray-600 dark:hover:bg-gray-700 text-sm font-medium transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Undo (Ctrl/Cmd+Z)"
+                >
+                  ↶ Undo
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={redoStack.length === 0}
+                  className="px-3 py-2 bg-gray-500 dark:bg-gray-600 text-white rounded-lg hover:bg-gray-600 dark:hover:bg-gray-700 text-sm font-medium transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Redo (Ctrl/Cmd+Y)"
+                >
+                  ↷ Redo
+                </button>
+                
+                {/* Divider */}
+                <div className="border-l border-gray-300 dark:border-gray-600 mx-2"></div>
+                
+                {/* Restore Selection button */}
+                {hasStoredSelection && !selectionData.hasSelection && (
+                  <button
+                    onClick={restoreLastSelection}
+                    className="px-3 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 text-sm font-medium transition-colors duration-300"
+                    title="Restore previous text selection"
+                  >
+                    🔄 Restore Selection
+                  </button>
+                )}
+                
+                {/* AI Assist buttons */}
                 <button
                   onClick={() => handleAiAssist('Improve the writing style and clarity of this text')}
                   disabled={isAiAssisting}
@@ -865,6 +1056,7 @@ const DocumentEditor = () => {
 
             {/* Markdown Editor */}
             <textarea
+              ref={markdownEditorRef}
               id="markdown-editor"
               value={markdownContent}
               onChange={(e) => handleTextChange(e.target.value)}
@@ -1019,6 +1211,25 @@ const DocumentEditor = () => {
           💡 Click Save to download your document
         </div>
       </div>
+
+      {/* Floating Toolbar for Text Selection */}
+      <FloatingToolbar
+        position={selectionData.position}
+        onOperation={handleSelectedTextAiAssist}
+        isVisible={selectionData.hasSelection && activeTab === 'markdown'}
+        isProcessing={previewModal.isLoading}
+      />
+
+      {/* Preview Modal */}
+      <PreviewModal
+        isOpen={previewModal.isOpen}
+        onClose={handleClosePreview}
+        onApply={handleApplyChanges}
+        originalText={previewModal.originalText}
+        suggestedText={previewModal.suggestedText}
+        isLoading={previewModal.isLoading}
+        error={previewModal.error}
+      />
     </div>
   );
 };
