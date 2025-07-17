@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-const FloatingToolbar = ({ position, onOperation, isVisible, isProcessing }) => {
+const FloatingToolbar = ({ position, onOperation, isVisible, isProcessing, onClose }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [currentPosition, setCurrentPosition] = useState(position);
@@ -137,7 +137,7 @@ const FloatingToolbar = ({ position, onOperation, isVisible, isProcessing }) => 
       ref={toolbarRef}
       onMouseDown={handleMouseDown}
       onTouchStart={handleMouseDown}
-      className={`fixed z-50 bg-white dark:bg-gray-800 border rounded-lg shadow-lg transition-all duration-200 ${
+      className={`floating-toolbar fixed z-50 bg-white dark:bg-gray-800 border rounded-lg shadow-lg transition-all duration-200 ${
         hasBeenManuallyPositioned 
           ? 'border-blue-300 dark:border-blue-600' 
           : 'border-gray-200 dark:border-gray-700'
@@ -152,21 +152,37 @@ const FloatingToolbar = ({ position, onOperation, isVisible, isProcessing }) => 
     >
       {/* Drag Handle */}
       <div 
-        className="drag-handle flex items-center justify-center py-2 px-4 cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 border-b border-gray-200 dark:border-gray-600"
+        className="drag-handle flex items-center justify-between py-2 px-4 cursor-grab active:cursor-grabbing hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 border-b border-gray-200 dark:border-gray-600"
         onDoubleClick={handleDoubleClick}
         title="Drag to move • Double-click to reset position"
       >
-        <div className="flex space-x-1">
-          <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+        <div className="flex items-center">
+          <div className="flex space-x-1">
+            <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+          </div>
+          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 select-none">
+            {hasBeenManuallyPositioned ? 'Double-click to reset' : 'Drag to move'}
+          </span>
         </div>
-        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 select-none">
-          {hasBeenManuallyPositioned ? 'Double-click to reset' : 'Drag to move'}
-        </span>
+        
+        {/* Close Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="ml-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-150 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 rounded"
+          title="Close toolbar (or press Escape)"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
       
       {/* Toolbar Content */}

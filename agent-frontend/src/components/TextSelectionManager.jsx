@@ -16,8 +16,20 @@ export const useTextSelection = (textareaRef) => {
     if (!textareaRef.current) return;
 
     const textarea = textareaRef.current;
+    
+    // Check if the textarea is focused and has an active selection
+    const isFocused = document.activeElement === textarea;
     const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-    const hasSelection = selectedText.length > 0;
+    const hasSelection = isFocused && selectedText.length > 0 && selectedText.trim().length > 0;
+
+    console.log('Selection update:', { 
+      selectedText, 
+      hasSelection, 
+      start: textarea.selectionStart, 
+      end: textarea.selectionEnd,
+      isFocused,
+      activeElement: document.activeElement
+    });
 
     if (hasSelection) {
       // Calculate position for floating toolbar
@@ -42,10 +54,9 @@ export const useTextSelection = (textareaRef) => {
       setSelectionData(newSelectionData);
       
       // Store this as the last valid selection if it has content
-      if (hasSelection && selectedText.trim().length > 0) {
-        setLastValidSelection(newSelectionData);
-      }
+      setLastValidSelection(newSelectionData);
     } else {
+      console.log('Clearing selection');
       setSelectionData({
         selectedText: '',
         selectionStart: 0,
@@ -57,6 +68,7 @@ export const useTextSelection = (textareaRef) => {
   }, [textareaRef]);
 
   const clearSelection = useCallback(() => {
+    console.log('clearSelection called');
     if (textareaRef.current) {
       textareaRef.current.setSelectionRange(0, 0);
     }
@@ -100,19 +112,89 @@ export const useTextSelection = (textareaRef) => {
     const handleKeyUp = handleSelectionChange;
     const handleClick = handleSelectionChange;
     const handleFocus = handleSelectionChange; // Add focus event to re-detect selection
+    const handleInput = handleSelectionChange; // Add input event
+    const handleBlur = () => {
+      console.log('Textarea lost focus, clearing selection');
+      // Clear selection when textarea loses focus
+      setTimeout(() => {
+        setSelectionData({
+          selectedText: '',
+          selectionStart: 0,
+          selectionEnd: 0,
+          hasSelection: false,
+          position: { x: 0, y: 0 }
+        });
+      }, 100); // Small delay to allow clicks on toolbar
+    };
 
     textarea.addEventListener('mouseup', handleMouseUp);
     textarea.addEventListener('keyup', handleKeyUp);
     textarea.addEventListener('click', handleClick);
     textarea.addEventListener('focus', handleFocus);
+    textarea.addEventListener('input', handleInput);
+    textarea.addEventListener('blur', handleBlur);
+    
+    // Use global selectionchange event
+    document.addEventListener('selectionchange', handleSelectionChange);
 
     return () => {
       textarea.removeEventListener('mouseup', handleMouseUp);
       textarea.removeEventListener('keyup', handleKeyUp);
       textarea.removeEventListener('click', handleClick);
       textarea.removeEventListener('focus', handleFocus);
+      textarea.removeEventListener('input', handleInput);
+      textarea.removeEventListener('blur', handleBlur);
+      document.removeEventListener('selectionchange', handleSelectionChange);
     };
   }, [textareaRef, updateSelection]);
+
+  // Add global click handler to detect clicks outside the textarea
+  useEffect(() => {
+    const handleDocumentClick = (event) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      console.log('Document click detected:', event.target);
+      // If clicking outside the textarea and not on the floating toolbar
+      if (!textarea.contains(event.target) && !event.target.closest('.floating-toolbar')) {
+        console.log('Clearing selection due to outside click');
+        clearSelection();
+      }
+    };
+
+    const handleTextareaClick = (event) => {
+      console.log('Textarea click detected');
+      // Use a longer timeout to ensure the selection change has been processed
+      setTimeout(() => {
+        updateSelection();
+      }, 10);
+    };
+
+    // Add escape key handler
+    const handleEscapeKey = (event) => {
+      if (event.key === 'Escape' && selectionData.hasSelection) {
+        console.log('Escape key pressed, clearing selection');
+        clearSelection();
+      }
+    };
+
+    const textarea = textareaRef.current;
+    
+    document.addEventListener('click', handleDocumentClick);
+    document.addEventListener('keydown', handleEscapeKey);
+    
+    if (textarea) {
+      textarea.addEventListener('click', handleTextareaClick);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleDocumentClick);
+      document.removeEventListener('keydown', handleEscapeKey);
+      if (textarea) {
+        textarea.removeEventListener('click', handleTextareaClick);
+      }
+    };
+  }, [textareaRef, clearSelection, selectionData.hasSelection]);
 
   const refreshSelection = useCallback(() => {
     updateSelection();

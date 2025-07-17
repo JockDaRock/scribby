@@ -20,7 +20,7 @@ const DocumentEditor = () => {
   const markdownEditorRef = useRef(null);
   
   // Text selection state
-  const { selectionData, replaceSelectedText, refreshSelection, restoreLastSelection, hasStoredSelection } = useTextSelection(markdownEditorRef);
+  const { selectionData, replaceSelectedText, refreshSelection, restoreLastSelection, hasStoredSelection, clearSelection } = useTextSelection(markdownEditorRef);
   const [previewModal, setPreviewModal] = useState({
     isOpen: false,
     originalText: '',
@@ -1218,6 +1218,7 @@ const DocumentEditor = () => {
         onOperation={handleSelectedTextAiAssist}
         isVisible={selectionData.hasSelection && activeTab === 'markdown'}
         isProcessing={previewModal.isLoading}
+        onClose={clearSelection}
       />
 
       {/* Preview Modal */}
