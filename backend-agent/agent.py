@@ -77,7 +77,8 @@ class SocialMediaRequest(BaseModel):
     transcription_job_id: Optional[str] = None
     youtube_url: Optional[str] = None
     file_upload_id: Optional[str] = None
-    api_key: str
+    user_description: Optional[str] = None
+    api_key: Optional[str] = None  # Only required if not using user_description
     llm_api_key: str
     llm_model: Optional[str] = None  # Use default from config if not specified
     llm_base_url: Optional[str] = None  # Optional base URL override
@@ -100,15 +101,6 @@ class GenerationStatusResponse(BaseModel):
 
 class PromptTemplate(BaseModel):
     template: str
-
-class RevisionRequest(BaseModel):
-    content: str
-    platform: str
-    content_type: str  # 'social_media' or 'blog'
-    instructions: str
-    llm_api_key: Optional[str] = None
-    llm_model: Optional[str] = None
-    llm_base_url: Optional[str] = None
 
 class RevisionRequest(BaseModel):
     content: str
@@ -158,7 +150,8 @@ async def process_content_generation(
     transcription_job_id: Optional[str], 
     youtube_url: Optional[str],
     file_upload_id: Optional[str],
-    api_key: str,
+    user_description: Optional[str],
+    api_key: Optional[str],
     llm_api_key: str,
     llm_model: str,
     llm_base_url: Optional[str],
@@ -323,18 +316,24 @@ async def process_content_generation(
             # This would be handled by the frontend - uploading file first then getting a job ID
             update_job_status(job_id, "error", "Direct file upload processing not implemented in this endpoint")
             return
-            
+        
+        # Step 4: If user_description is provided, use it directly as transcript text
+        elif user_description:
+            update_job_status(job_id, "processing", "Using provided user description as content source...")
+            # Set transcript_text directly from user_description and skip transcription processing
+            transcript_text = user_description
         else:
             update_job_status(job_id, "error", "No transcription source provided")
             return
         
-        # Step 4: Process with LLM
+        # Step 5: Process with LLM
         update_job_status(job_id, "processing", "Processing with LLM...")
         
-        # Format the transcription
-        transcript_text = "No text found in transcription."
-        if transcription_data and "text" in transcription_data:
-            transcript_text = transcription_data["text"]
+        # Format the transcription (only if not already set from user_description)
+        if 'transcript_text' not in locals():
+            transcript_text = "No text found in transcription."
+            if transcription_data and "text" in transcription_data:
+                transcript_text = transcription_data["text"]
             
         # Generate prompt for LLM
         prompt = generate_social_media_prompt(
@@ -749,10 +748,17 @@ async def generate_content(background_tasks: BackgroundTasks, request: SocialMed
         job_id = generate_job_id()
         
         # Validate request
-        if not request.transcription_job_id and not request.youtube_url and not request.file_upload_id:
+        if not request.transcription_job_id and not request.youtube_url and not request.file_upload_id and not request.user_description:
             raise HTTPException(
                 status_code=400, 
-                detail="At least one source (transcription_job_id, youtube_url, or file_upload_id) must be provided"
+                detail="At least one source (transcription_job_id, youtube_url, file_upload_id, or user_description) must be provided"
+            )
+        
+        # Validate api_key is provided when using transcription sources
+        if (request.transcription_job_id or request.youtube_url or request.file_upload_id) and not request.api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="API key is required when using transcription sources (transcription_job_id, youtube_url, or file_upload_id)"
             )
         
         if not request.platforms or len(request.platforms) == 0:
@@ -780,6 +786,7 @@ async def generate_content(background_tasks: BackgroundTasks, request: SocialMed
             transcription_job_id=request.transcription_job_id,
             youtube_url=request.youtube_url,
             file_upload_id=request.file_upload_id,
+            user_description=request.user_description,
             api_key=request.api_key,
             llm_api_key=request.llm_api_key,
             llm_model=model,
@@ -885,8 +892,101 @@ async def revise_content(request: RevisionRequest):
                 
             return {"revised_content": result["revised_content"]}
             
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail="Invalid JSON in LLM response")
+        except json.JSONDecodeError as e:
+            log(f"JSON decode error: {str(e)}")
+            log(f"Raw JSON string: {repr(json_str)}")
+            
+            # Try to fix common JSON issues and parse again
+            try:
+                # Clean up the JSON string
+                cleaned_json = json_str.strip()
+                
+                # Fix common issues:
+                # 1. Remove any trailing commas
+                cleaned_json = re.sub(r',\s*}', '}', cleaned_json)
+                cleaned_json = re.sub(r',\s*]', ']', cleaned_json)
+                
+                # 2. Fix unescaped quotes in content
+                # Look for the revised_content value and properly escape quotes
+                content_match = re.search(r'"revised_content"\s*:\s*"(.*?)"(?=\s*})', cleaned_json, re.DOTALL)
+                if content_match:
+                    content_value = content_match.group(1)
+                    # Escape internal quotes and newlines
+                    escaped_content = content_value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                    cleaned_json = cleaned_json.replace(content_match.group(0), f'"revised_content": "{escaped_content}"')
+                
+                result = json.loads(cleaned_json)
+                log("Successfully parsed JSON after cleanup")
+                
+                if "revised_content" not in result:
+                    raise HTTPException(status_code=500, detail="No revised content in response")
+                    
+                return {"revised_content": result["revised_content"]}
+                
+            except Exception as cleanup_error:
+                log(f"Failed to parse JSON even after cleanup: {str(cleanup_error)}")
+                
+                # Last resort: try to extract the content manually
+                try:
+                    # Look for content between "revised_content": " and the last quote before }
+                    content_pattern = r'"revised_content"\s*:\s*"(.*?)"(?=\s*}?)'
+                    content_match = re.search(content_pattern, content, re.DOTALL)
+                    
+                    if content_match:
+                        extracted_content = content_match.group(1)
+                        # Clean up escaped characters
+                        extracted_content = extracted_content.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+                        log("Successfully extracted content manually")
+                        return {"revised_content": extracted_content}
+                    else:
+                        # If we can't find JSON structure, return the raw content as fallback
+                        log("Using raw LLM response as fallback")
+                        return {"revised_content": content}
+                        
+                except Exception as extract_error:
+                    log(f"Manual extraction failed: {str(extract_error)}")
+                    raise HTTPException(status_code=500, detail=f"Failed to parse LLM response. Original error: {str(e)}")
+                
+                # 2. Fix unescaped quotes in content
+                # Look for the revised_content value and properly escape quotes
+                content_match = re.search(r'"revised_content"\s*:\s*"(.*?)"(?=\s*})', cleaned_json, re.DOTALL)
+                if content_match:
+                    content_value = content_match.group(1)
+                    # Escape internal quotes and newlines
+                    escaped_content = content_value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                    cleaned_json = cleaned_json.replace(content_match.group(0), f'"revised_content": "{escaped_content}"')
+                
+                result = json.loads(cleaned_json)
+                log("Successfully parsed JSON after cleanup")
+                
+                if "revised_content" not in result:
+                    raise HTTPException(status_code=500, detail="No revised content in response")
+                    
+                return {"revised_content": result["revised_content"]}
+                
+            except Exception as cleanup_error:
+                log(f"Failed to parse JSON even after cleanup: {str(cleanup_error)}")
+                
+                # Last resort: try to extract the content manually
+                try:
+                    # Look for content between "revised_content": " and the last quote before }
+                    content_pattern = r'"revised_content"\s*:\s*"(.*?)"(?=\s*}?)'
+                    content_match = re.search(content_pattern, content, re.DOTALL)
+                    
+                    if content_match:
+                        extracted_content = content_match.group(1)
+                        # Clean up escaped characters
+                        extracted_content = extracted_content.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+                        log("Successfully extracted content manually")
+                        return {"revised_content": extracted_content}
+                    else:
+                        # If we can't find JSON structure, return the raw content as fallback
+                        log("Using raw LLM response as fallback")
+                        return {"revised_content": content}
+                        
+                except Exception as extract_error:
+                    log(f"Manual extraction failed: {str(extract_error)}")
+                    raise HTTPException(status_code=500, detail=f"Failed to parse LLM response. Original error: {str(e)}")
             
     except HTTPException:
         raise
@@ -894,65 +994,7 @@ async def revise_content(request: RevisionRequest):
         log(f"Error in revise_content endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/revise")
-async def revise_content(request: RevisionRequest):
-    """Revise existing content based on user instructions"""
-    try:
-        # Generate revision prompt
-        prompt = generate_revision_prompt(
-            request.content,
-            request.platform,
-            request.content_type,
-            request.instructions
-        )
-        
-        # Use provided API key and model or defaults
-        api_key = request.llm_api_key
-        model = request.llm_model or config["default_model"]
-        base_url = request.llm_base_url or config["base_url"]
-        
-        if not api_key:
-            raise HTTPException(status_code=400, detail="LLM API key is required for revision")
-        
-        llm_response = call_llm_api(prompt, api_key, model, base_url)
-        
-        if "error" in llm_response:
-            raise HTTPException(status_code=500, detail=f"LLM API error: {llm_response['error']}")
-        
-        # Parse the response to extract revised content
-        content = llm_response["content"]
-        
-        # Extract JSON from the content
-        import re
-        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
-        
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            # Try to find JSON within the text
-            start_idx = content.find('{')
-            end_idx = content.rfind('}') + 1
-            
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = content[start_idx:end_idx]
-            else:
-                raise HTTPException(status_code=500, detail="Could not find JSON in LLM response")
-        
-        try:
-            result = json.loads(json_str)
-            if "revised_content" not in result:
-                raise HTTPException(status_code=500, detail="No revised content in response")
-                
-            return {"revised_content": result["revised_content"]}
-            
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail="Invalid JSON in LLM response")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        log(f"Error in revise_content endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/document-assist")
 async def document_assist(request: DocumentAssistRequest):
@@ -1025,8 +1067,60 @@ Provide only the JSON response with the revised content."""
                 
             return {"revised_content": result["revised_content"]}
             
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail="Invalid JSON in LLM response")
+        except json.JSONDecodeError as e:
+            log(f"JSON decode error: {str(e)}")
+            log(f"Raw JSON string: {repr(json_str)}")
+            
+            # Try to fix common JSON issues and parse again
+            try:
+                # Clean up the JSON string
+                cleaned_json = json_str.strip()
+                
+                # Fix common issues:
+                # 1. Remove any trailing commas
+                cleaned_json = re.sub(r',\s*}', '}', cleaned_json)
+                cleaned_json = re.sub(r',\s*]', ']', cleaned_json)
+                
+                # 2. Fix unescaped quotes in content
+                # Look for the revised_content value and properly escape quotes
+                content_match = re.search(r'"revised_content"\s*:\s*"(.*?)"(?=\s*})', cleaned_json, re.DOTALL)
+                if content_match:
+                    content_value = content_match.group(1)
+                    # Escape internal quotes and newlines
+                    escaped_content = content_value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                    cleaned_json = cleaned_json.replace(content_match.group(0), f'"revised_content": "{escaped_content}"')
+                
+                result = json.loads(cleaned_json)
+                log("Successfully parsed JSON after cleanup")
+                
+                if "revised_content" not in result:
+                    raise HTTPException(status_code=500, detail="No revised content in response")
+                    
+                return {"revised_content": result["revised_content"]}
+                
+            except Exception as cleanup_error:
+                log(f"Failed to parse JSON even after cleanup: {str(cleanup_error)}")
+                
+                # Last resort: try to extract the content manually
+                try:
+                    # Look for content between "revised_content": " and the last quote before }
+                    content_pattern = r'"revised_content"\s*:\s*"(.*?)"(?=\s*}?)'
+                    content_match = re.search(content_pattern, content, re.DOTALL)
+                    
+                    if content_match:
+                        extracted_content = content_match.group(1)
+                        # Clean up escaped characters
+                        extracted_content = extracted_content.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+                        log("Successfully extracted content manually")
+                        return {"revised_content": extracted_content}
+                    else:
+                        # If we can't find JSON structure, return the raw content as fallback
+                        log("Using raw LLM response as fallback")
+                        return {"revised_content": content}
+                        
+                except Exception as extract_error:
+                    log(f"Manual extraction failed: {str(extract_error)}")
+                    raise HTTPException(status_code=500, detail=f"Failed to parse LLM response. Original error: {str(e)}")
             
     except HTTPException:
         raise
