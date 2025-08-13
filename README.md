@@ -3,27 +3,35 @@
 This application allows you to transcribe audio files, YouTube videos, and microphone recordings using the Whisper API. The application has been split into two components:
 
 1. **Backend**: A RESTful API server that handles all transcription functionality
-2. **Frontend**: A Gradio web interface that communicates with the backend API
+2. **Frontend**: A React web interface that communicates with the backend API
+3. **Agent**: An AI-powered content generation service for creating social media posts and blog content
 
 ## Project Structure
 
 ```
 scribby/
-├── backend/
-│   ├── api.py                # FastAPI server implementation
-│   ├── transcriber.py        # Transcription functionality
-│   ├── requirements.txt      # Backend dependencies
-│   └── Dockerfile            # Backend container definition
-├── frontend/
-│   ├── frontend.py           # Gradio interface
-│   ├── requirements.txt      # Frontend dependencies
-│   └── Dockerfile            # Frontend container definition
-├── outputs/                  # Shared directory for transcription outputs
-└── docker-compose.yml        # Configuration for running both services
+├── backend/                  # Transcription API (FastAPI)
+│   ├── api.py               # FastAPI server implementation
+│   ├── transcriber.py       # Transcription functionality
+│   ├── requirements.txt     # Backend dependencies
+│   └── Dockerfile.backend   # Backend container definition
+├── backend-agent/           # Content generation API (FastAPI)
+│   ├── agent.py            # Agent API implementation
+│   ├── requirements.txt    # Agent dependencies
+│   └── Dockerfile.agent    # Agent container definition
+├── agent-frontend/          # React frontend
+│   ├── src/                # React source code
+│   ├── package.json        # Frontend dependencies
+│   └── Dockerfile.agent.frontend # Frontend container definition
+├── outputs/                 # Shared directory for transcription outputs
+├── docker-compose.yml       # Development deployment
+├── docker-compose.production.yml # Production deployment with published images
+└── .github/workflows/       # GitHub Actions for CI/CD
 ```
 
 ## Features
 
+### Transcription Features
 - Transcribe audio files (MP3, MP4, WAV, etc.)
 - Transcribe YouTube videos by URL
 - Transcribe microphone recordings
@@ -32,107 +40,199 @@ scribby/
 - Large file handling with automatic chunking
 - Background processing for long-running tasks
 
+### Content Generation Features  
+- AI-powered social media post generation
+- Blog post creation
+- Multi-platform content optimization (LinkedIn, Twitter, Instagram, etc.)
+- Content revision and editing
+- Document assistance
+
+## Quick Start
+
+### Option 1: Use Published Images (Recommended for Production)
+
+```bash
+# Start with pre-built images from GitHub Container Registry
+./docker.sh start --prod
+
+# Or manually
+docker-compose -f docker-compose.production.yml up -d
+```
+
+### Option 2: Build Locally (Development)
+
+```bash
+# Build and start all services
+./docker.sh start
+
+# Or manually
+docker-compose up -d --build
+```
+
+### Option 3: Local Development Setup
+
+```bash
+# Run all services locally without Docker
+python startup.py
+```
+
+## Access the Application
+
+Once started, the application will be available at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Agent API**: http://localhost:8001
+- **API Documentation**: http://localhost:8000/docs (Backend), http://localhost:8001/docs (Agent)
+
 ## Installation and Setup
 
-### Option 1: Using Docker Compose (Recommended)
+### Using Docker (Recommended)
 
-1. Make sure you have Docker and Docker Compose installed
-2. Clone this repository
-3. Create the directory structure and place the files in their respective locations
-4. Run the application:
+1. **Prerequisites:**
+   - Docker and Docker Compose installed
+   - Git
 
-```bash
-docker-compose up -d
-```
+2. **Clone and run:**
+   ```bash
+   git clone <repository-url>
+   cd scribby
+   ./docker.sh start
+   ```
 
-The frontend will be available at http://localhost:7860, and the backend API at http://localhost:8000.
+### Manual Setup
 
-### Option 2: Manual Setup
+For detailed manual setup instructions, see the individual service directories:
+- [Backend Setup](./backend/)
+- [Agent Setup](./backend-agent/)
+- [Frontend Setup](./agent-frontend/)
 
-#### Backend Setup
+## Configuration
 
-1. Create a virtual environment and activate it:
+### API Keys
+Configure your API keys through the frontend settings page:
+- **Transcription API Key**: For Whisper/OpenAI transcription
+- **LLM API Key**: For content generation (OpenAI/custom LLM)
 
-```bash
-python -m venv backend-env
-source backend-env/bin/activate  # On Windows: backend-env\Scripts\activate
-```
+### Environment Variables
 
-2. Install dependencies:
+#### Backend
+- `BASE_URL`: Whisper API endpoint (default: `https://api.openai.com/v1`)
+- `DEBUG`: Enable detailed logging (default: `true`)
 
-```bash
-cd backend
-pip install -r requirements.txt
-```
+#### Agent
+- `TRANSCRIPTION_API_URL`: Internal transcription service URL
+- `LLM_API_URL`: LLM API endpoint (default: `https://api.openai.com/v1`)
+- `DEBUG`: Enable debug logging (default: `true`)
 
-3. Install system dependencies:
-   - ffmpeg: For audio processing
-   - yt-dlp: For YouTube video downloading
+#### Frontend
+- `REACT_APP_TRANSCRIPTION_API_URL`: Backend API URL
+- `REACT_APP_AGENT_API_URL`: Agent API URL
 
-4. Run the backend:
+## Deployment
 
-```bash
-uvicorn api:app --host 0.0.0.0 --port 8000 --reload
-```
+### Production Deployment
 
-#### Frontend Setup
-
-1. Create a virtual environment and activate it:
-
-```bash
-python -m venv frontend-env
-source frontend-env/bin/activate  # On Windows: frontend-env\Scripts\activate
-```
-
-2. Install dependencies:
+For production deployments, use the published Docker images:
 
 ```bash
-cd frontend
-pip install -r requirements.txt
+# Use production compose file with published images
+docker-compose -f docker-compose.production.yml up -d
 ```
 
-3. Set the API_BASE_URL environment variable to point to your backend:
+See [GitHub Container Registry Guide](./README.ghcr.md) for detailed information about using published images.
 
-```bash
-# Linux/Mac
-export API_BASE_URL=http://localhost:8000
+### Custom Deployment
 
-# Windows
-set API_BASE_URL=http://localhost:8000
-```
+The application can be deployed on:
+- Docker Swarm
+- Kubernetes  
+- Cloud platforms (AWS, GCP, Azure)
+- VPS servers
 
-4. Run the frontend:
+See [Docker Documentation](./README.docker.md) for deployment details.
 
-```bash
-python frontend.py
-```
+## API Usage
 
-The Gradio interface will be available at http://localhost:7860.
+The backend provides RESTful APIs for transcription and content generation:
 
-## Using the API
-
-The backend provides the following endpoints:
-
+### Transcription API Endpoints
 - `GET /models`: Get available transcription models
 - `GET /languages`: Get available languages
 - `POST /transcribe/file`: Transcribe an audio file
 - `POST /transcribe/youtube`: Transcribe a YouTube video
-- `GET /status/{job_id}`: Check the status of a transcription job
-- `GET /download/{job_id}`: Download the transcription result
-- `GET /youtube-info`: Get information about a YouTube video
+- `GET /status/{job_id}`: Check transcription job status
+- `GET /download/{job_id}`: Download transcription result
 
-For more details, access the Swagger documentation at http://localhost:8000/docs when the backend is running.
+### Agent API Endpoints
+- `POST /generate`: Generate content from transcription
+- `GET /status/{job_id}`: Check generation job status
+- `GET /platforms`: Get available social media platforms
+- `POST /revise`: Revise existing content
+- `POST /document-assist`: AI document assistance
 
-## Environment Variables
+For complete API documentation, visit the Swagger docs at `/docs` when the services are running.
 
-### Backend
+## Development
 
-- `BASE_URL`: Base URL for the Whisper API (default: `https://litellm.darock.io/v1`)
-- `DEBUG`: Enable detailed logging (default: `true`)
+### GitHub Actions CI/CD
 
-### Frontend
+The project includes automated GitHub Actions workflows that:
+- Build Docker images for all services
+- Push images to GitHub Container Registry
+- Run tests and security scans
+- Support multi-platform builds (AMD64, ARM64)
 
-- `API_BASE_URL`: URL of the backend API (default: `http://localhost:8000`)
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test with `./docker.sh start`
+5. Submit a pull request
+
+### Local Development Commands
+
+```bash
+# Start development environment
+./docker.sh start
+
+# View logs
+./docker.sh logs
+
+# Rebuild services
+./docker.sh build
+
+# Clean up
+./docker.sh clean
+
+# Use production images
+./docker.sh start --prod
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Port conflicts**: Ensure ports 3000, 8000, and 8001 are available
+2. **API key errors**: Configure API keys in the frontend settings
+3. **Docker issues**: Try `./docker.sh clean` and restart
+4. **Build failures**: Check the GitHub Actions logs
+
+### Debug Mode
+
+Enable debug logging by setting `DEBUG=true` in environment variables.
+
+### Getting Help
+
+- Check the [GitHub Issues](https://github.com/jockdarock/scribby/issues)
+- Review service logs: `./docker.sh logs`
+- Consult the API documentation at `/docs`
+
+## Documentation
+
+- [Docker Setup Guide](./README.docker.md)
+- [GitHub Container Registry](./README.ghcr.md)
+- [API Documentation](http://localhost:8000/docs) (when running)
 
 ## License
 

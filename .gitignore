@@ -1,4 +1,5 @@
 agent-frontend/node_modules
+agent-frontend/build
 backend/.venv
 backend/__pycache__
 backend/outputs
