@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     wget \
+    curl \
     && wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp \
     && apt-get clean \
@@ -18,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY api.py .
 COPY transcriber.py .
+COPY transcription_config.json .
 
 # Create output directory
 RUN mkdir -p outputs
