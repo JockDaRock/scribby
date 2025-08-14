@@ -1,5 +1,5 @@
 services:
-  # Transcription Backend Service
+  # Transcription Backend and API Service
   transcription-api:
     image: ghcr.io/jockdarock/scribby-backend:latest
     ports:

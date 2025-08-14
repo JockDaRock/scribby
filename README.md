@@ -1,10 +1,30 @@
-# Whisper Transcription Application
-
-This application allows you to transcribe audio files, YouTube videos, and microphone recordings using the Whisper API. The application has been split into two components:
+# Scribby - AI Assisted Content Creator
 
 1. **Backend**: A RESTful API server that handles all transcription functionality
 2. **Frontend**: A React web interface that communicates with the backend API
 3. **Agent**: An AI-powered content generation service for creating social media posts and blog content
+
+### PreReqs for Deployment
+* docker and docker-compose or equivalent.
+
+### PreReqs for Development
+* Python
+* UV - An extremely fast Python package and project manager
+* nodejs
+
+## Getting Started with Docker-compose
+
+### Deploy
+
+```
+git clone https://github.com/JockDaRock/scribby
+
+cd scribby
+
+docker compose
+
+
+```
 
 ## Project Structure
 
@@ -35,12 +55,11 @@ scribby/
 - Transcribe audio files (MP3, MP4, WAV, etc.)
 - Transcribe YouTube videos by URL
 - Transcribe microphone recordings
-- Language detection or selection
-- Translation to English option
 - Large file handling with automatic chunking
 - Background processing for long-running tasks
 
-### Content Generation Features  
+### Content Generation Features
+- Turn transcribed content into promotional content
 - AI-powered social media post generation
 - Blog post creation
 - Multi-platform content optimization (LinkedIn, Twitter, Instagram, etc.)
@@ -49,32 +68,73 @@ scribby/
 
 ## Quick Start
 
-### Option 1: Use Published Images (Recommended for Production)
+### Option 1: Use Published Images
 
 ```bash
-# Start with pre-built images from GitHub Container Registry
-./docker.sh start --prod
+# deploy
+git clone https://github.com/JockDaRock/scribby
 
-# Or manually
-docker-compose -f docker-compose.production.yml up -d
+cd scribby
+
+docker-compose -f docker-compose.production.yml up
 ```
 
 ### Option 2: Build Locally (Development)
 
 ```bash
-# Build and start all services
-./docker.sh start
+# build and deploy
+git clone https://github.com/JockDaRock/scribby
 
-# Or manually
-docker-compose up -d --build
+cd scribby
+
+docker-compose up --build
 ```
 
 ### Option 3: Local Development Setup
 
 ```bash
-# Run all services locally without Docker
-python startup.py
+git clone https://github.com/JockDaRock/scribby
+
+cd scribby
 ```
+
+> Duplicate this terminal 3 times.
+
+```bash
+# Terminal 1
+cd backend
+
+uv venv --python 3.13
+
+source .venv/bin/activate
+
+uv pip install -r requirements.txt
+
+python -m uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+```bash
+# Terminal 2
+cd backend-agent
+
+uv venv --python 3.13
+
+source .venv/bin/activate
+
+uv pip install -r requirements.txt
+
+python -m uvicorn agent:app --host 0.0.0.0 --port 8001
+```
+
+```bash
+# Terminal 1
+cd agent-frontend
+
+npm install
+
+npm start
+```
+
 
 ## Access the Application
 
@@ -83,28 +143,6 @@ Once started, the application will be available at:
 - **Backend API**: http://localhost:8000
 - **Agent API**: http://localhost:8001
 - **API Documentation**: http://localhost:8000/docs (Backend), http://localhost:8001/docs (Agent)
-
-## Installation and Setup
-
-### Using Docker (Recommended)
-
-1. **Prerequisites:**
-   - Docker and Docker Compose installed
-   - Git
-
-2. **Clone and run:**
-   ```bash
-   git clone <repository-url>
-   cd scribby
-   ./docker.sh start
-   ```
-
-### Manual Setup
-
-For detailed manual setup instructions, see the individual service directories:
-- [Backend Setup](./backend/)
-- [Agent Setup](./backend-agent/)
-- [Frontend Setup](./agent-frontend/)
 
 ## Configuration
 
@@ -127,19 +165,7 @@ Configure your API keys through the frontend settings page:
 #### Frontend
 - `REACT_APP_TRANSCRIPTION_API_URL`: Backend API URL
 - `REACT_APP_AGENT_API_URL`: Agent API URL
-
-## Deployment
-
-### Production Deployment
-
-For production deployments, use the published Docker images:
-
-```bash
-# Use production compose file with published images
-docker-compose -f docker-compose.production.yml up -d
-```
-
-See [GitHub Container Registry Guide](./README.ghcr.md) for detailed information about using published images.
+> this can be changed in the frontend web app, under settings, if these are not set
 
 ### Custom Deployment
 
@@ -148,8 +174,6 @@ The application can be deployed on:
 - Kubernetes  
 - Cloud platforms (AWS, GCP, Azure)
 - VPS servers
-
-See [Docker Documentation](./README.docker.md) for deployment details.
 
 ## API Usage
 
@@ -187,10 +211,10 @@ The project includes automated GitHub Actions workflows that:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test with `./docker.sh start`
+4. Test
 5. Submit a pull request
 
-### Local Development Commands
+### Local Development Commands - WIP Not working - looking at making a script to make development and builds a bit easier
 
 ```bash
 # Start development environment
@@ -227,12 +251,6 @@ Enable debug logging by setting `DEBUG=true` in environment variables.
 - Check the [GitHub Issues](https://github.com/jockdarock/scribby/issues)
 - Review service logs: `./docker.sh logs`
 - Consult the API documentation at `/docs`
-
-## Documentation
-
-- [Docker Setup Guide](./README.docker.md)
-- [GitHub Container Registry](./README.ghcr.md)
-- [API Documentation](http://localhost:8000/docs) (when running)
 
 ## License
 
