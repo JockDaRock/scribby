@@ -12,20 +12,6 @@
 * UV - An extremely fast Python package and project manager
 * nodejs
 
-## Getting Started with Docker-compose
-
-### Deploy
-
-```
-git clone https://github.com/JockDaRock/scribby
-
-cd scribby
-
-docker compose
-
-
-```
-
 ## Project Structure
 
 ```
