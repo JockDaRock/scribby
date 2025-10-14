@@ -16,6 +16,7 @@ import ResultsDisplay from './components/ResultsDisplay';
 import Settings from './components/Settings';
 import DocumentEditor from './components/DocumentEditor';
 import SocialMediaCreator from './components/SocialMediaCreator';
+import ContentTranscriber from './components/ContentTranscriber';
 
 // Main App component
 function AppContent() {
@@ -158,6 +159,7 @@ function AppContent() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/document-editor" element={<DocumentEditor />} />
           <Route path="/social-creator" element={<SocialMediaCreator apiConfig={apiConfig} />} />
+          <Route path="/transcriber" element={<ContentTranscriber />} />
         </Routes>
       </main>
       

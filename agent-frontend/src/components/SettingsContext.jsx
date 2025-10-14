@@ -6,24 +6,27 @@ export const SettingsContext = createContext();
 // Default settings values
 const defaultSettings = {
   // API Keys
-  transcriptionApiKey: '',
+  transcriptionApiKey: '', // DEPRECATED: No longer needed (browser transcription)
   llmApiKey: '',
-  
+
   // API Service URLs
-  transcriptionApiUrl: process.env.REACT_APP_TRANSCRIPTION_API_URL || 'http://localhost:8000',
+  transcriptionApiUrl: process.env.REACT_APP_TRANSCRIPTION_API_URL || 'http://localhost:8000', // DEPRECATED
   llmApiUrl: process.env.REACT_APP_AGENT_API_URL || 'http://localhost:8001',
-  
+
   // Base URLs for external services
-  transcriptionBaseUrl: 'https://api.openai.com/v1',
+  transcriptionBaseUrl: 'https://api.openai.com/v1', // DEPRECATED
   llmBaseUrl: 'https://api.openai.com/v1',
-  
+
   // Available models
-  transcriptionModels: ['whisper-1', 'distil-whisper-large-v3-en'],
+  transcriptionModels: ['whisper-1', 'distil-whisper-large-v3-en'], // DEPRECATED
   llmModels: ['gpt-4.1-nano', 'gpt-4o-mini'],
-  
+
   // Default selected models
-  defaultTranscriptionModel: 'whisper-1',
+  defaultTranscriptionModel: 'whisper-1', // DEPRECATED
   defaultLlmModel: 'gpt-4o-mini',
+
+  // Browser-based Whisper model (NEW)
+  whisperModel: process.env.REACT_APP_DEFAULT_WHISPER_MODEL || 'Xenova/whisper-base',
 };
 
 export const SettingsProvider = ({ children }) => {

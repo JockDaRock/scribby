@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Scribby Cache</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #4f46e5;
+        }
+        .success {
+            background: #10b981;
+            padding: 15px;
+            border-radius: 6px;
+            color: white;
+            margin-top: 20px;
+            display: none;
+        }
+        .info {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Clear Scribby Cache</h1>
+
+        <p>This will clear all cached data including:</p>
+        <ul>
+            <li>LocalStorage settings</li>
+            <li>IndexedDB (transcription history)</li>
+            <li>Cached Whisper models</li>
+        </ul>
+
+        <button onclick="clearAll()">Clear All Cache</button>
+        <button onclick="window.location.href='/'">Go Back to App</button>
+
+        <div id="success" class="success">
+            ✅ Cache cleared successfully! Redirecting to app...
+        </div>
+
+        <div class="info">
+            <strong>Why clear cache?</strong><br>
+            If you're experiencing model loading errors or outdated settings, clearing the cache will reset everything to defaults.
+        </div>
+    </div>
+
+    <script>
+        async function clearAll() {
+            try {
+                // Clear localStorage
+                console.log('Clearing localStorage...');
+                localStorage.clear();
+
+                // Clear IndexedDB
+                console.log('Clearing IndexedDB...');
+                const dbs = await indexedDB.databases();
+                for (const db of dbs) {
+                    console.log(`Deleting database: ${db.name}`);
+                    indexedDB.deleteDatabase(db.name);
+                }
+
+                // Clear cache storage (for models)
+                console.log('Clearing cache storage...');
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    for (const cacheName of cacheNames) {
+                        console.log(`Deleting cache: ${cacheName}`);
+                        await caches.delete(cacheName);
+                    }
+                }
+
+                // Show success message
+                document.getElementById('success').style.display = 'block';
+
+                // Redirect after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+
+            } catch (error) {
+                console.error('Error clearing cache:', error);
+                alert('Error clearing cache: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

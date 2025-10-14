@@ -74,15 +74,16 @@ job_status = {}
 
 # Models
 class SocialMediaRequest(BaseModel):
-    transcription_job_id: Optional[str] = None
-    youtube_url: Optional[str] = None
-    file_upload_id: Optional[str] = None
+    transcription_text: Optional[str] = None  # NEW: Direct transcription text from browser
+    transcription_job_id: Optional[str] = None  # DEPRECATED: Legacy backend transcription
+    youtube_url: Optional[str] = None  # DEPRECATED: Legacy YouTube processing
+    file_upload_id: Optional[str] = None  # DEPRECATED: Legacy file upload
     user_description: Optional[str] = None
-    api_key: Optional[str] = None  # Only required if not using user_description
+    api_key: Optional[str] = None  # Only required for legacy transcription sources
     llm_api_key: str
     llm_model: Optional[str] = None  # Use default from config if not specified
     llm_base_url: Optional[str] = None  # Optional base URL override
-    transcription_base_url: Optional[str] = None  # Optional transcription base URL override 
+    transcription_base_url: Optional[str] = None  # Optional transcription base URL override
     content_type: Optional[str] = "social_media"  # 'social_media' or 'blog'
     platforms: List[str]
     context: Optional[str] = ""
@@ -146,32 +147,45 @@ def log(message):
 
 # Background processing function
 async def process_content_generation(
-    job_id: str, 
-    transcription_job_id: Optional[str], 
-    youtube_url: Optional[str],
-    file_upload_id: Optional[str],
-    user_description: Optional[str],
-    api_key: Optional[str],
-    llm_api_key: str,
-    llm_model: str,
-    llm_base_url: Optional[str],
-    transcription_base_url: Optional[str],
-    content_type: str,
-    platforms: List[str],
-    context: str,
-    audience: str,
-    tags: List[str]
+    job_id: str,
+    transcription_text: Optional[str] = None,  # NEW: Direct transcription text
+    transcription_job_id: Optional[str] = None,
+    youtube_url: Optional[str] = None,
+    file_upload_id: Optional[str] = None,
+    user_description: Optional[str] = None,
+    api_key: Optional[str] = None,
+    llm_api_key: str = None,
+    llm_model: str = None,
+    llm_base_url: Optional[str] = None,
+    transcription_base_url: Optional[str] = None,
+    content_type: str = "social_media",
+    platforms: List[str] = None,
+    context: str = "",
+    audience: str = "",
+    tags: List[str] = None
 ):
     """Process content generation in the background"""
     try:
         update_job_status(job_id, "processing", "Starting content generation process...")
         transcription_data = None
-        
+
         # Define transcription API URL to use
         transcription_url = TRANSCRIPTION_API_URL
-        
-        # Step 1: Get transcription data if job ID is provided
-        if transcription_job_id:
+
+        # NEW Priority 1: Use provided transcription text directly (browser-based transcription)
+        if transcription_text:
+            update_job_status(job_id, "processing", "Using provided transcription text...")
+            transcript_text = transcription_text
+            log(f"Using browser-transcribed text (length: {len(transcription_text)} chars)")
+
+        # Priority 2: Use user description
+        elif user_description:
+            update_job_status(job_id, "processing", "Using provided user description...")
+            transcript_text = user_description
+            log("Using user description as content source")
+
+        # Priority 3 (LEGACY): Get transcription data if job ID is provided
+        elif transcription_job_id:
             update_job_status(job_id, "processing", "Retrieving transcription data...")
             transcription_status_url = f"{transcription_url}/status/{transcription_job_id}"
             
@@ -311,19 +325,14 @@ async def process_content_generation(
                 update_job_status(job_id, "error", f"Error connecting to transcription API: {str(req_err)}")
                 return
         
-        # Step 3: If no transcription job ID and no YouTube URL but file_upload_id is provided
+        # Priority 4 (LEGACY): If file_upload_id is provided
         elif file_upload_id:
             # This would be handled by the frontend - uploading file first then getting a job ID
             update_job_status(job_id, "error", "Direct file upload processing not implemented in this endpoint")
             return
-        
-        # Step 4: If user_description is provided, use it directly as transcript text
-        elif user_description:
-            update_job_status(job_id, "processing", "Using provided user description as content source...")
-            # Set transcript_text directly from user_description and skip transcription processing
-            transcript_text = user_description
+
         else:
-            update_job_status(job_id, "error", "No transcription source provided")
+            update_job_status(job_id, "error", "No content source provided (transcription_text, user_description, or legacy sources)")
             return
         
         # Step 5: Process with LLM
@@ -747,18 +756,18 @@ async def generate_content(background_tasks: BackgroundTasks, request: SocialMed
         # Generate a job ID
         job_id = generate_job_id()
         
-        # Validate request
-        if not request.transcription_job_id and not request.youtube_url and not request.file_upload_id and not request.user_description:
+        # Validate request - must have at least one content source
+        if not request.transcription_text and not request.transcription_job_id and not request.youtube_url and not request.file_upload_id and not request.user_description:
             raise HTTPException(
-                status_code=400, 
-                detail="At least one source (transcription_job_id, youtube_url, file_upload_id, or user_description) must be provided"
+                status_code=400,
+                detail="At least one source must be provided: transcription_text (recommended), user_description, or legacy sources (transcription_job_id, youtube_url, file_upload_id)"
             )
-        
-        # Validate api_key is provided when using transcription sources
+
+        # Validate api_key is provided when using LEGACY transcription sources
         if (request.transcription_job_id or request.youtube_url or request.file_upload_id) and not request.api_key:
             raise HTTPException(
                 status_code=400,
-                detail="API key is required when using transcription sources (transcription_job_id, youtube_url, or file_upload_id)"
+                detail="API key is required when using legacy transcription sources (transcription_job_id, youtube_url, or file_upload_id)"
             )
         
         if not request.platforms or len(request.platforms) == 0:
@@ -783,6 +792,7 @@ async def generate_content(background_tasks: BackgroundTasks, request: SocialMed
         background_tasks.add_task(
             process_content_generation,
             job_id=job_id,
+            transcription_text=request.transcription_text,  # NEW: Browser-transcribed text
             transcription_job_id=request.transcription_job_id,
             youtube_url=request.youtube_url,
             file_upload_id=request.file_upload_id,

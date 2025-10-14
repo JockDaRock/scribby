@@ -14,22 +14,25 @@ const Settings = () => {
     // API Keys
     transcriptionApiKey: settings.transcriptionApiKey || '',
     llmApiKey: settings.llmApiKey || '',
-    
+
     // API Service URLs
     transcriptionApiUrl: settings.transcriptionApiUrl || 'http://localhost:8000',
     llmApiUrl: settings.llmApiUrl || 'http://localhost:8001',
-    
+
     // Base URLs
     transcriptionBaseUrl: settings.transcriptionBaseUrl || 'https://api.openai.com/v1',
     llmBaseUrl: settings.llmBaseUrl || 'https://api.openai.com/v1',
-    
+
     // Models (as comma-separated strings for the form)
     transcriptionModels: (settings.transcriptionModels || ['whisper-1']).join(', '),
     llmModels: (settings.llmModels || ['gpt-4o-mini']).join(', '),
-    
+
     // Default models
     defaultTranscriptionModel: settings.defaultTranscriptionModel || 'whisper-1',
     defaultLlmModel: settings.defaultLlmModel || 'gpt-4o-mini',
+
+    // Browser-based Whisper model (NEW)
+    whisperModel: settings.whisperModel || 'Xenova/whisper-tiny.en',
   });
   
   // State for tracking if we're syncing with backend
@@ -141,6 +144,7 @@ const Settings = () => {
         llmModels: 'gpt-4.1-nano, gpt-4o-mini',
         defaultTranscriptionModel: 'whisper-1',
         defaultLlmModel: 'gpt-4o-mini',
+        whisperModel: 'Xenova/whisper-base',
       });
       toast.success('Settings reset to defaults');
     }
@@ -407,13 +411,82 @@ const Settings = () => {
           </div>
         </div>
         
+        {/* Browser Transcription Settings NEW! */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-3 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
+            Browser Transcription (NEW!)
+          </h3>
+
+          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+            <p className="text-sm text-green-800 dark:text-green-200">
+              <span className="font-bold">🎉 Privacy First:</span> Transcription now happens entirely in your browser! Your audio never leaves your device.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* Whisper Model Selection */}
+            <div>
+              <label className="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" htmlFor="whisperModel">
+                Whisper Model
+              </label>
+              <select
+                id="whisperModel"
+                name="whisperModel"
+                className="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-indigo-500 dark:focus:ring-purple-600 transition-colors duration-300"
+                value={formValues.whisperModel || 'Xenova/whisper-base'}
+                onChange={handleChange}
+              >
+                <option value="Xenova/whisper-tiny.en">Tiny (English only) - 75 MB • Very Fast</option>
+                <option value="Xenova/whisper-tiny">Tiny (Multilingual) - 75 MB • Very Fast</option>
+                <option value="Xenova/whisper-base.en">Base (English only) - 145 MB • Fast</option>
+                <option value="Xenova/whisper-base">Base (Multilingual) - 145 MB • Fast ⭐ Recommended</option>
+                <option value="Xenova/whisper-small.en">Small (English only) - 485 MB • Medium</option>
+                <option value="Xenova/whisper-small">Small (Multilingual) - 485 MB • Medium</option>
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Larger models are more accurate but slower. Models are downloaded and cached on first use.
+              </p>
+            </div>
+
+            {/* Model Preload Button */}
+            <div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    toast.info('Downloading model... This may take a few minutes.');
+                    const { default: transcriptionService } = await import('../services/transcription.service');
+                    await transcriptionService.preloadModel(formValues.whisperModel || 'Xenova/whisper-base');
+                    toast.success('Model downloaded and cached successfully!');
+                  } catch (error) {
+                    toast.error(`Failed to preload model: ${error.message}`);
+                  }
+                }}
+                className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors duration-300"
+              >
+                📦 Preload Model (Recommended for First Use)
+              </button>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Download and cache the model now to avoid waiting during transcription.
+              </p>
+            </div>
+
+            {/* Info about deprecated transcription API */}
+            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                <strong>Note:</strong> The Transcription API Key and URL settings below are deprecated and no longer used. Transcription now happens entirely in your browser using Whisper ONNX models.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Security Notice */}
         <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
           <p className="text-sm text-yellow-800 dark:text-yellow-200">
             <span className="font-bold">Security Note:</span> Your API keys are stored locally in your browser and are not sent to any server except when making API requests.
           </p>
         </div>
-        
+
         {/* Buttons */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <button

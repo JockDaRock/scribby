@@ -1,48 +1,77 @@
 # Scribby - AI Assisted Content Creator
 
-1. **Backend**: A RESTful API server that handles all transcription functionality
-2. **Frontend**: A React web interface that communicates with the backend API
-3. **Agent**: An AI-powered content generation service for creating social media posts and blog content
+**Browser-Based Transcription + AI Content Generation**
+
+Scribby transforms audio/video into engaging social media content and blog posts using:
+1. **Frontend**: React web app with **browser-based transcription** (Whisper ONNX models via transformers.js)
+2. **Backend-Agent**: FastAPI service for AI-powered content generation using LLMs
+
+## 🚀 Key Features
+
+### ✨ Privacy-First Browser Transcription
+- **100% Client-Side Processing**: Audio never leaves your device
+- **Offline Capability**: Works offline after initial model download
+- **Multiple Model Sizes**: Choose between speed (tiny) and accuracy (large)
+- **WebGPU Acceleration**: Hardware-accelerated transcription when available
+- **Local Storage**: Transcription history saved in browser (IndexedDB)
+
+### 📝 Transcription Features
+- Upload audio files (MP3, MP4, WAV, FLAC, WebM)
+- Microphone recording with real-time transcription
+- YouTube video transcription (with optional server-side audio extraction)
+- Word-level timestamps
+- Multi-language support (100+ languages)
 
 ### PreReqs for Deployment
-* docker and docker-compose or equivalent.
+* docker and docker-compose or equivalent
+* Modern web browser (Chrome 90+, Firefox 89+, Safari 15+, Edge 90+)
 
 ### PreReqs for Development
-* Python
-* UV - An extremely fast Python package and project manager
-* nodejs
+* Python 3.11+
+* UV - Python package and project manager
+* Node.js 14+
+* npm or yarn
 
 ## Project Structure
 
 ```
 scribby/
-├── backend/                  # Transcription API (FastAPI)
-│   ├── api.py               # FastAPI server implementation
-│   ├── transcriber.py       # Transcription functionality
-│   ├── requirements.txt     # Backend dependencies
-│   └── Dockerfile.backend   # Backend container definition
 ├── backend-agent/           # Content generation API (FastAPI)
-│   ├── agent.py            # Agent API implementation
-│   ├── requirements.txt    # Agent dependencies
-│   └── Dockerfile.agent    # Agent container definition
-├── agent-frontend/          # React frontend
-│   ├── src/                # React source code
+│   ├── agent.py            # LLM-powered content generation
+│   ├── requirements.txt    # Python dependencies
+│   └── Dockerfile.agent    # Container definition
+├── agent-frontend/          # React frontend with browser transcription
+│   ├── src/
+│   │   ├── workers/        # Web Workers for transcription
+│   │   │   └── whisper.worker.js  # Whisper ONNX model worker
+│   │   ├── services/       # Service layer
+│   │   │   ├── transcription.service.js
+│   │   │   └── storage.service.js (IndexedDB)
+│   │   ├── hooks/          # React hooks
+│   │   │   └── useTranscription.js
+│   │   ├── components/     # React components
+│   │   └── utils/          # Utilities (audio, browser checks)
 │   ├── package.json        # Frontend dependencies
-│   └── Dockerfile.agent.frontend # Frontend container definition
-├── outputs/                 # Shared directory for transcription outputs
-├── docker-compose.yml       # Development deployment
-├── docker-compose.production.yml # Production deployment with published images
-└── .github/workflows/       # GitHub Actions for CI/CD
+│   └── Dockerfile.agent.frontend
+├── docker-compose.yml       # Simplified deployment (2 services)
+├── MIGRATION_GUIDE.md       # Detailed integration guide
+└── .github/workflows/       # CI/CD
+
+REMOVED:
+├── backend/                 # ❌ Old transcription API (no longer needed)
 ```
 
 ## Features
 
-### Transcription Features
-- Transcribe audio files (MP3, MP4, WAV, etc.)
-- Transcribe YouTube videos by URL
-- Transcribe microphone recordings
-- Large file handling with automatic chunking
-- Background processing for long-running tasks
+### Transcription Features (Browser-Based)
+- ✅ Transcribe audio files (MP3, MP4, WAV, FLAC, WebM, OGG)
+- ✅ Microphone recording and transcription
+- ✅ Privacy-first: Audio never sent to servers
+- ✅ Offline mode after model download
+- ✅ Multiple Whisper model sizes (tiny to large-v3-turbo)
+- ✅ Word-level timestamps
+- ✅ Progress tracking with model download status
+- ✅ Transcription history (stored locally in IndexedDB)
 
 ### Content Generation Features
 - Turn transcribed content into promotional content
@@ -54,53 +83,39 @@ scribby/
 
 ## Quick Start
 
-### Option 1: Use Published Images
+### Option 1: Docker Compose (Recommended)
 
 ```bash
-# deploy
+# Clone the repository
 git clone https://github.com/JockDaRock/scribby
-
 cd scribby
 
-docker-compose -f docker-compose.production.yml up
-```
-
-### Option 2: Build Locally (Development)
-
-```bash
-# build and deploy
-git clone https://github.com/JockDaRock/scribby
-
-cd scribby
-
+# Start services (backend-agent + frontend)
 docker-compose up --build
+
+# Access the app at http://localhost:3000
 ```
 
-### Option 3: Local Development Setup
+**What's Running:**
+- Frontend (React): http://localhost:3000 - Browser-based transcription + UI
+- Backend-Agent (FastAPI): http://localhost:8001 - LLM content generation
+
+### Option 2: Local Development Setup
+
+**Prerequisites:**
+- Python 3.11+
+- Node.js 14+
+- UV package manager
 
 ```bash
 git clone https://github.com/JockDaRock/scribby
-
 cd scribby
 ```
 
-> Duplicate this terminal 3 times.
+> Open 2 terminal windows (transcription happens in browser now!)
 
 ```bash
-# Terminal 1
-cd backend
-
-uv venv --python 3.13
-
-source .venv/bin/activate
-
-uv pip install -r requirements.txt
-
-python -m uvicorn api:app --host 0.0.0.0 --port 8000
-```
-
-```bash
-# Terminal 2
+# Terminal 1: Backend-Agent (LLM content generation)
 cd backend-agent
 
 uv venv --python 3.13
@@ -113,7 +128,7 @@ python -m uvicorn agent:app --host 0.0.0.0 --port 8001
 ```
 
 ```bash
-# Terminal 1
+# Terminal 2: Frontend (React with browser transcription)
 cd agent-frontend
 
 npm install
@@ -121,20 +136,42 @@ npm install
 npm start
 ```
 
-
 ## Access the Application
 
 Once started, the application will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Agent API**: http://localhost:8001
-- **API Documentation**: http://localhost:8000/docs (Backend), http://localhost:8001/docs (Agent)
+- **Frontend**: http://localhost:3000 (Transcription + Content Generation UI)
+- **Backend-Agent API**: http://localhost:8001 (LLM content generation)
+- **API Documentation**: http://localhost:8001/docs
+
+**Note:** Transcription now happens entirely in your browser! No backend transcription API needed.
+
+## Configuration
+
+### Browser Requirements
+
+For optimal performance, use a modern browser:
+- **Chrome/Edge 90+** (Recommended - best WebAssembly performance)
+- **Firefox 89+** (Good support, may require enabling Web Workers)
+- **Safari 15+** (Works, but slower WASM performance)
+
+### Whisper Model Selection
+
+Choose a model based on your needs:
+
+| Model | Size | Speed | Accuracy | Languages | Recommended For |
+|-------|------|-------|----------|-----------|-----------------|
+| `Xenova/whisper-tiny.en` | 150 MB | Very Fast | Good | English only | Quick transcriptions, testing |
+| `Xenova/whisper-base` | 290 MB | Fast | Better | 100+ | General use, multilingual |
+| `Xenova/whisper-small` | 970 MB | Medium | Great | 100+ | Better accuracy needed |
+| `onnx-community/whisper-large-v3-turbo` | 1.6 GB | Slow | Best | 100+ | Production, highest accuracy |
+
+Configure in Settings → Whisper Model
 
 ## Configuration
 
 ### API Keys
 Configure your API keys through the frontend settings page:
-- **Transcription API Key**: For Whisper/OpenAI transcription
+- ~~**Transcription API Key**~~: No longer needed! Transcription happens in browser
 - **LLM API Key**: For content generation (OpenAI/custom LLM)
 
 ### Environment Variables

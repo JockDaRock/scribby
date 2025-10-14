@@ -1,5 +1,7 @@
 agent-frontend/node_modules
 agent-frontend/build
+agent-frontend/.cache
+agent-frontend/node_modules/.cache
 backend/.venv
 backend/__pycache__
 backend/outputs
@@ -8,6 +10,21 @@ backend-agent/__pycache__
 gradio-frontend/.venv
 gradio-frontend/__pycache__
 gradio-frontend/outputs
+outputs/
 .venv
 venv
 trash/
+
+# Browser-based transcription artifacts
+*.onnx
+*.onnx_data
+models/
+.cache/
+
+# Environment files with secrets
+.env.local
+.env.production.local
+
+# OS files
+.DS_Store
+Thumbs.db

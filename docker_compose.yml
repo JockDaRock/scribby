@@ -1,27 +1,7 @@
 services:
-  # Transcription Backend Service
-  transcription-api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./outputs:/app/outputs
-    environment:
-      - BASE_URL=https://api.openai.com/v1
-      - DEBUG=true
-    restart: unless-stopped
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+  # REMOVED: transcription-api service (transcription now happens in browser)
 
-  # Agent Backend Service
+  # Agent Backend Service (LLM content generation only)
   agent-api:
     build:
       context: ./backend-agent
@@ -29,12 +9,9 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - TRANSCRIPTION_API_URL=http://transcription-api:8000
+      # REMOVED: TRANSCRIPTION_API_URL (no longer needed)
       - LLM_API_URL=https://api.openai.com/v1
       - DEBUG=true
-    depends_on:
-      transcription-api:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network
@@ -45,7 +22,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # React Frontend
+  # React Frontend (with browser-based transcription)
   frontend:
     build:
       context: ./agent-frontend
@@ -53,11 +30,12 @@ services:
     ports:
       - "3000:80"
     environment:
-      - REACT_APP_TRANSCRIPTION_API_URL=http://localhost:8000
+      # REMOVED: REACT_APP_TRANSCRIPTION_API_URL (transcription now in browser)
       - REACT_APP_AGENT_API_URL=http://localhost:8001
+      - REACT_APP_DEFAULT_WHISPER_MODEL=onnx-community/whisper-large-v3-turbo_timestamped
+      - REACT_APP_ENABLE_WEBGPU=false
+      - REACT_APP_ENABLE_MODEL_CACHE=true
     depends_on:
-      transcription-api:
-        condition: service_healthy
       agent-api:
         condition: service_healthy
     restart: unless-stopped
@@ -67,7 +45,3 @@ services:
 networks:
   app-network:
     driver: bridge
-
-volumes:
-  outputs:
-    driver: local
