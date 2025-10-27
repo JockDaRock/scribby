@@ -40,7 +40,9 @@ export const SettingsProvider = ({ children }) => {
 
   // Function to update settings
   const updateSettings = (newSettings) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    updateBackendConfig(updated);  // Automatically update backend with new settings
   };
 
   // Reset settings to default
@@ -50,31 +52,31 @@ export const SettingsProvider = ({ children }) => {
   };
   
   // Update backend configuration
-  const updateBackendConfig = async () => {
+  const updateBackendConfig = async (currentSettings = settings) => {
     try {
       // Update transcription API configuration
-      await fetch(`${settings.transcriptionApiUrl}/config`, {
+      await fetch(`${currentSettings.transcriptionApiUrl}/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          base_url: settings.transcriptionBaseUrl,
-          models: settings.transcriptionModels,
-          default_model: settings.defaultTranscriptionModel
+          base_url: currentSettings.transcriptionBaseUrl,
+          models: currentSettings.transcriptionModels,
+          default_model: currentSettings.defaultTranscriptionModel
         }),
       });
       
       // Update LLM API configuration
-      await fetch(`${settings.llmApiUrl}/config`, {
+      await fetch(`${currentSettings.llmApiUrl}/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          base_url: settings.llmBaseUrl,
-          models: settings.llmModels,
-          default_model: settings.defaultLlmModel
+          base_url: currentSettings.llmBaseUrl,
+          models: currentSettings.llmModels,
+          default_model: currentSettings.defaultLlmModel
         }),
       });
       
@@ -86,31 +88,31 @@ export const SettingsProvider = ({ children }) => {
   };
   
   // Get backend configuration
-  const fetchBackendConfig = async () => {
+  const fetchBackendConfig = async (currentSettings = settings) => {
     try {
       // Fetch transcription API configuration
-      const transResponse = await fetch(`${settings.transcriptionApiUrl}/config`);
+      const transResponse = await fetch(`${currentSettings.transcriptionApiUrl}/config`);
       if (transResponse.ok) {
         const transConfig = await transResponse.json();
         
         // Update local settings with fetched configuration
         updateSettings({
-          transcriptionBaseUrl: transConfig.base_url || settings.transcriptionBaseUrl,
-          transcriptionModels: transConfig.models || settings.transcriptionModels,
-          defaultTranscriptionModel: transConfig.default_model || settings.defaultTranscriptionModel
+          transcriptionBaseUrl: transConfig.base_url || currentSettings.transcriptionBaseUrl,
+          transcriptionModels: transConfig.models || currentSettings.transcriptionModels,
+          defaultTranscriptionModel: transConfig.default_model || currentSettings.defaultTranscriptionModel
         });
       }
       
       // Fetch LLM API configuration
-      const llmResponse = await fetch(`${settings.llmApiUrl}/config`);
+      const llmResponse = await fetch(`${currentSettings.llmApiUrl}/config`);
       if (llmResponse.ok) {
         const llmConfig = await llmResponse.json();
         
         // Update local settings with fetched configuration
         updateSettings({
-          llmBaseUrl: llmConfig.base_url || settings.llmBaseUrl,
-          llmModels: llmConfig.models || settings.llmModels,
-          defaultLlmModel: llmConfig.default_model || settings.defaultLlmModel
+          llmBaseUrl: llmConfig.base_url || currentSettings.llmBaseUrl,
+          llmModels: llmConfig.models || currentSettings.llmModels,
+          defaultLlmModel: llmConfig.default_model || currentSettings.defaultLlmModel
         });
       }
       
